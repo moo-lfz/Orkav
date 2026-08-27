@@ -35,7 +35,7 @@ HydraEffects.prototype.initShaders = function () {
       void main() {
         gl_FragColor = texture2D(u_source, v_texCoord);
       }`,
-    datamosh: `
+        datamosh: `
       precision highp float;
       varying vec2 v_texCoord;
       uniform sampler2D u_source;
@@ -44,12 +44,31 @@ HydraEffects.prototype.initShaders = function () {
       uniform float u_p1, u_p2, u_p3, u_p4;
       void main() {
         vec4 curr = texture2D(u_source, v_texCoord);
-        vec2 warp = v_texCoord + vec2(sin(u_time * (u_p3 * 0.015) + v_texCoord.y * 20.0) * (u_p1 * 0.0001),
-                                      cos(u_time * (u_p3 * 0.01) + v_texCoord.x * 20.0) * (u_p1 * 0.0001));
+        
+        // Movimento ondulatorio fluido
+        float waveFreq = 5.0 + u_p3 * 20.0;
+        float waveAmp = u_p1 * 0.02;
+        float speed = 2.0 + u_p4 * 8.0;
+        
+        vec2 warp = v_texCoord;
+        warp.x += sin(u_time * speed + v_texCoord.y * waveFreq) * waveAmp;
+        warp.y += cos(u_time * speed * 0.7 + v_texCoord.x * waveFreq) * waveAmp;
+        
         vec4 hist = texture2D(u_history, warp);
+        
+        // Dissolvenza dinamica basata sulla differenza
         float diff = length(curr.rgb - hist.rgb);
-        float threshold = u_p4 * 0.0015;
-        gl_FragColor = diff > threshold ? mix(curr, hist, u_p2 * 0.0015) : curr;
+        float threshold = 0.01 + u_p4 * 0.05;
+        float mixFactor = smoothstep(0.0, threshold, diff) * (u_p2 * 0.8);
+        
+        // Shift cromatico sui bordi
+        if (diff > threshold * 0.5) {
+          float shift = u_p1 * 0.01;
+          curr.r = texture2D(u_source, v_texCoord + vec2(shift, 0.0)).r;
+          curr.b = texture2D(u_source, v_texCoord - vec2(shift, 0.0)).b;
+        }
+        
+        gl_FragColor = mix(curr, hist, mixFactor);
       }`,
     glitch: `
       precision highp float;

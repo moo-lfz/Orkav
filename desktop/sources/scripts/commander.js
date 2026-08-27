@@ -73,7 +73,7 @@ function Commander (client) {
       const parts = p.str.split('+').map(s => s.trim()).filter(s => s.length > 0)
       const chain = []
 
-      // Funzione per generare 4 parametri da un singolo valore seme (0-999)
+      // Funzione per generare 4 parametri float da un singolo valore seme (0-999)
       function generateParamsFromSeed(seed) {
         let state = seed | 0
         const params = []
@@ -81,7 +81,8 @@ function Commander (client) {
           state ^= state << 13
           state ^= state >> 17
           state ^= state << 5
-          params.push(Math.abs(state % 667))
+          // Normalizza a float tra 0.0 e 1.0
+          params.push((state >>> 0) / 0xFFFFFFFF)
         }
         return params
       }
