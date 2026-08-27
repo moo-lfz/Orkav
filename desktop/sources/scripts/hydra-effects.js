@@ -17,13 +17,15 @@ function HydraEffects () {
 
 HydraEffects.prototype.initShaders = function () {
   const gl = this.gl
+  
+  // FIX CRITICO: Flip verticale per allineare WebGL a Canvas 2D
   const vertexSource = `
     attribute vec2 a_position;
     attribute vec2 a_texCoord;
     varying vec2 v_texCoord;
     void main() {
       gl_Position = vec4(a_position, 0.0, 1.0);
-      v_texCoord = a_texCoord;
+      v_texCoord = vec2(a_texCoord.x, 1.0 - a_texCoord.y);
     }
   `
 
@@ -35,97 +37,117 @@ HydraEffects.prototype.initShaders = function () {
       void main() {
         gl_FragColor = texture2D(u_source, v_texCoord);
       }`,
-        datamosh: `
+
+    datamosh: `
       precision highp float;
       varying vec2 v_texCoord;
       uniform sampler2D u_source;
       uniform sampler2D u_history;
       uniform float u_time;
-      uniform float u_p1, u_p2, u_p3, u_p4;
+      uniform float u_seed;
+      
       void main() {
-        vec4 curr = texture2D(u_source, v_texCoord);
+        float intensity = u_seed / 666.0;
+        vec2 uv = v_texCoord;
+        vec4 curr = texture2D(u_source, uv);
         
-        // Movimento ondulatorio fluido
-        float waveFreq = 5.0 + u_p3 * 20.0;
-        float waveAmp = u_p1 * 0.02;
-        float speed = 2.0 + u_p4 * 8.0;
+        // Optical flow approssimato
+        vec2 mv = vec2(
+          texture2D(u_source, uv + vec2(0.01, 0.0)).r - texture2D(u_source, uv - vec2(0.01, 0.0)).r,
+          texture2D(u_source, uv + vec2(0.0, 0.01)).r - texture2D(u_source, uv - vec2(0.0, 0.01)).r
+        );
         
-        vec2 warp = v_texCoord;
-        warp.x += sin(u_time * speed + v_texCoord.y * waveFreq) * waveAmp;
-        warp.y += cos(u_time * speed * 0.7 + v_texCoord.x * waveFreq) * waveAmp;
+        // Warp fluido
+        uv += mv * intensity * 0.8 + vec2(sin(u_time * 2.0) * 0.01, cos(u_time * 1.5) * 0.01);
+        vec4 hist = texture2D(u_history, uv);
         
-        vec4 hist = texture2D(u_history, warp);
-        
-        // Dissolvenza dinamica basata sulla differenza
-        float diff = length(curr.rgb - hist.rgb);
-        float threshold = 0.01 + u_p4 * 0.05;
-        float mixFactor = smoothstep(0.0, threshold, diff) * (u_p2 * 0.8);
-        
-        // Shift cromatico sui bordi
-        if (diff > threshold * 0.5) {
-          float shift = u_p1 * 0.01;
-          curr.r = texture2D(u_source, v_texCoord + vec2(shift, 0.0)).r;
-          curr.b = texture2D(u_source, v_texCoord - vec2(shift, 0.0)).b;
-        }
-        
-        gl_FragColor = mix(curr, hist, mixFactor);
+        gl_FragColor = mix(curr, hist, intensity * 0.85);
       }`,
+
     glitch: `
       precision highp float;
       varying vec2 v_texCoord;
       uniform sampler2D u_source;
       uniform float u_time;
-      uniform float u_p1, u_p2, u_p3, u_p4;
-      float rand(vec2 co) { return fract(sin(dot(co.xy, vec2(12.9898,78.233))) * 43758.5453); }
+      uniform float u_seed;
+      
       void main() {
+        float intensity = u_seed / 666.0;
         vec2 uv = v_texCoord;
-        float block = floor(uv.y * (666.0 / max(u_p1, 1.0))) / (666.0 / max(u_p1, 1.0));
-        float r = rand(vec2(block, floor(u_time * 10.0)));
-        if (r < (u_p4 * 0.0015)) {
-          uv.x += (u_p3 * 0.0003) * (r - 0.5);
+        
+        // Block displacement
+        float blockFreq = 10.0 + intensity * 30.0;
+        float block = floor(uv.y * blockFreq);
+        float offset = sin(block * 12.9898 + u_time * 5.0) * 0.02 * intensity;
+        uv.x += offset;
+        
+        // RGB Split aggressivo
+        float r = texture2D(u_source, uv + vec2(intensity * 0.03, 0.0)).r;
+        float g = texture2D(u_source, uv).g;
+        float b = texture2D(u_source, uv - vec2(intensity * 0.03, 0.0)).b;
+        vec3 col = vec3(r, g, b);
+        
+        // Strobe inversion
+        float strobe = sin(u_time * (10.0 + intensity * 20.0));
+        if (strobe > 0.8) {
+          col = 1.0 - col;
+          col = mix(col, vec3(0.45, 0.87, 0.76), 0.5); // Tinge di turchese
         }
-        vec4 col = texture2D(u_source, uv);
-        vec3 inv = vec3(1.0) - col.rgb;
-        inv = mix(inv, vec3(0.45, 0.87, 0.76), 0.3);
-        gl_FragColor = vec4(mix(col.rgb, inv, u_p2 * 0.0015), col.a);
+        
+        gl_FragColor = vec4(col, 1.0);
       }`,
+
     particle: `
       precision highp float;
       varying vec2 v_texCoord;
       uniform sampler2D u_source;
-      uniform vec2 u_resolution;
       uniform float u_time;
-      uniform float u_p1, u_p2, u_p3, u_p4;
-      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      uniform float u_seed;
+      
       void main() {
-        vec2 pixelCoord = v_texCoord * u_resolution;
-        float size = max(u_p2, 1.0);
-        vec2 blockUV = floor(pixelCoord / size) * size / u_resolution;
-        float rnd = hash(blockUV + floor(u_time * 3.0));
-        float trigger = fract(rnd + u_time * 0.5);
-        if (trigger < (u_p4 * 0.0015)) {
-          float gravity = (u_p1 * 0.0015) - 0.5;
-          float dispersion = (rnd - 0.5) * (u_p3 * 0.0003);
-          vec2 newUV = v_texCoord + vec2(dispersion, gravity * (u_p4 * 0.0015));
-          gl_FragColor = texture2D(u_source, newUV);
-        } else {
-          gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+        float intensity = u_seed / 666.0;
+        vec2 uv = v_texCoord;
+        
+        // Griglia di disintegrazione
+        float gridSize = 20.0 + intensity * 40.0;
+        vec2 grid = floor(uv * gridSize) / gridSize;
+        float n = fract(sin(dot(grid, vec2(12.9898, 78.233))) * 43758.5453);
+        
+        // Trigger stroboscopico
+        float trigger = step(0.7, n) * step(0.5, sin(u_time * 3.0 + n * 10.0));
+        
+        if (trigger > 0.5) {
+          uv += vec2((n - 0.5) * intensity * 0.15, intensity * 0.3 * sin(u_time * 2.0 + n * 5.0));
         }
+        
+        gl_FragColor = texture2D(u_source, uv);
       }`,
+
     displace: `
       precision highp float;
       varying vec2 v_texCoord;
       uniform sampler2D u_source;
       uniform float u_time;
-      uniform float u_p1, u_p2, u_p3, u_p4;
-      float noise(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+      uniform float u_seed;
+      
       void main() {
-        float freq = u_p3 * 0.015;
-        float speed = u_p2 * 0.005;
-        float n = noise(v_texCoord * freq + u_time * speed);
-        n = pow(n, 1.0 + (u_p4 * 0.003));
-        vec2 disp = vec2(n - 0.5, n - 0.5) * (u_p1 * 0.0003);
-        gl_FragColor = texture2D(u_source, v_texCoord + disp);
+        float intensity = u_seed / 666.0;
+        vec2 uv = v_texCoord;
+        
+        // Noise organico multi-direzionale
+        float n1 = sin(uv.x * 15.0 + u_time * 2.0) * cos(uv.y * 15.0 + u_time * 1.5);
+        float n2 = cos(uv.x * 10.0 - u_time) * sin(uv.y * 10.0 + u_time);
+        
+        vec2 disp = vec2(n1, n2) * intensity * 0.08;
+        
+        // Rotazione del displacement
+        float angle = n1 * 3.14159 * intensity;
+        vec2 rotDisp = vec2(
+          disp.x * cos(angle) - disp.y * sin(angle),
+          disp.x * sin(angle) + disp.y * cos(angle)
+        );
+        
+        gl_FragColor = texture2D(u_source, uv + rotDisp);
       }`
   }
 
@@ -152,10 +174,8 @@ HydraEffects.prototype.initShaders = function () {
 
 HydraEffects.prototype.initFramebuffers = function () {
   const gl = this.gl
-
   this.sourceTexture = gl.createTexture()
   this.historyTexture = gl.createTexture()
-
   this.fbA = { texture: gl.createTexture(), framebuffer: gl.createFramebuffer() }
   this.fbB = { texture: gl.createTexture(), framebuffer: gl.createFramebuffer() }
   this.historyFb = { framebuffer: gl.createFramebuffer() }
@@ -184,24 +204,20 @@ HydraEffects.prototype.resize = function (width, height) {
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbA.framebuffer)
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.fbA.texture, 0)
-
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbB.framebuffer)
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.fbB.texture, 0)
-
   gl.bindFramebuffer(gl.FRAMEBUFFER, this.historyFb.framebuffer)
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.historyTexture, 0)
-
   gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 }
 
 HydraEffects.prototype.setChain = function (chainArray) {
-  this.activeChain = chainArray.slice(0, 8)
+  this.activeChain = chainArray.slice(0, 7)
   console.log('FX Chain:', this.activeChain)
 }
 
 HydraEffects.prototype.render = function (sourceCanvas) {
   const gl = this.gl
-
   if (this.canvas.width !== sourceCanvas.width || this.canvas.height !== sourceCanvas.height) {
     this.resize(sourceCanvas.width, sourceCanvas.height)
   }
@@ -221,13 +237,12 @@ HydraEffects.prototype.render = function (sourceCanvas) {
 
   let readTex = this.sourceTexture
   let writeFb = this.fbA
-
   this.time += 0.016
 
   for (let i = 0; i < this.activeChain.length; i++) {
     const fx = this.activeChain[i]
     const prog = this.programs[fx.name]
-    if (!prog) { continue }
+    if (!prog) continue
 
     gl.useProgram(prog)
     gl.bindFramebuffer(gl.FRAMEBUFFER, writeFb.framebuffer)
@@ -244,14 +259,9 @@ HydraEffects.prototype.render = function (sourceCanvas) {
     gl.uniform1i(gl.getUniformLocation(prog, 'u_history'), 1)
 
     gl.uniform1f(gl.getUniformLocation(prog, 'u_time'), this.time)
-    gl.uniform2f(gl.getUniformLocation(prog, 'u_resolution'), this.canvas.width, this.canvas.height)
-    gl.uniform1f(gl.getUniformLocation(prog, 'u_p1'), fx.p1)
-    gl.uniform1f(gl.getUniformLocation(prog, 'u_p2'), fx.p2)
-    gl.uniform1f(gl.getUniformLocation(prog, 'u_p3'), fx.p3)
-    gl.uniform1f(gl.getUniformLocation(prog, 'u_p4'), fx.p4)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_seed'), fx.seed)
 
     this.drawQuad(gl, prog)
-
     readTex = writeFb.texture
     writeFb = (writeFb === this.fbA) ? this.fbB : this.fbA
   }
@@ -261,7 +271,6 @@ HydraEffects.prototype.render = function (sourceCanvas) {
   gl.clearColor(0, 0, 0, 1)
   gl.clear(gl.COLOR_BUFFER_BIT)
   this.blitTexture(readTex)
-
   this.blitTextureToFb(readTex, this.historyFb)
 }
 

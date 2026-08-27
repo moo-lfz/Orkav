@@ -11,8 +11,7 @@ function Commander (client) {
     inject: (p) => {
       client.cursor.select(p._x, p._y)
       if (client.source.cache[p._str + '.orca']) {
-        const block = client.source.cache[p._str + '.orca']
-        const rect = client.orca.toRect(block)
+        const rect = client.orca.toRect(client.source.cache[p._str + '.orca'])
         client.cursor.scaleTo(rect.x, rect.y)
       }
     }
@@ -20,14 +19,8 @@ function Commander (client) {
 
   this.actives = {
     osc: (p) => { client.io.osc.select(p.int) },
-    udp: (p) => {
-      client.io.udp.selectOutput(p.x)
-      if (p.y !== null) { client.io.udp.selectInput(p.y) }
-    },
-    midi: (p) => {
-      client.io.midi.selectOutput(p.x)
-      if (p.y !== null) { client.io.midi.selectInput(p.y) }
-    },
+    udp: (p) => { client.io.udp.selectOutput(p.x); if (p.y !== null) { client.io.udp.selectInput(p.y) } },
+    midi: (p) => { client.io.midi.selectOutput(p.x); if (p.y !== null) { client.io.midi.selectInput(p.y) } },
     ip: (p) => { client.io.setIp(p.str) },
     cc: (p) => { client.io.cc.setOffset(p.int) },
     pg: (p) => { client.io.cc.stack.push({ channel: clamp(p.ints[0], 0, 15), bank: p.ints[1], sub: p.ints[2], pgm: clamp(p.ints[3], 0, 127), type: 'pg' }); client.io.cc.run() },
@@ -59,86 +52,19 @@ function Commander (client) {
       client.orca.writeBlock(origin ? origin.x : client.cursor.x, origin ? origin.y : client.cursor.y, block)
       client.cursor.scaleTo(0, 0)
     },
-    write: (p) => {
-      client.orca.writeBlock(p._x || client.cursor.x, p._y || client.cursor.y, p._str)
-    },
+    write: (p) => { client.orca.writeBlock(p._x || client.cursor.x, p._y || client.cursor.y, p._str) },
     fx: (p) => {
-      if (!p.str || p.str.trim().length === 0) {
-        if (client.fxEngine) { client.fxEngine.setChain([]) }
-        console.log('FX Chain: CLEARED')
-        return
-      }
-
-      const validNames = ['datamosh', 'glitch', 'particle', 'displace']
-      const parts = p.str.split('+').map(s => s.trim()).filter(s => s.length > 0)
+      if (!p.str || p.str.trim().length === 0) { client.fxManager.setChain([]); return }
+      const names = ['datamosh', 'glitch', 'displace', 'fracture', 'brokentv' ]
       const chain = []
-
-      // Funzione per generare 4 parametri float da un singolo valore seme (0-999)
-      function generateParamsFromSeed(seed) {
-        let state = seed | 0
-        const params = []
-        for (let i = 0; i < 4; i++) {
-          state ^= state << 13
-          state ^= state >> 17
-          state ^= state << 5
-          // Normalizza a float tra 0.0 e 1.0
-          params.push((state >>> 0) / 0xFFFFFFFF)
-        }
-        return params
-      }
-
+      const parts = p.str.split('+')
       for (let i = 0; i < parts.length; i++) {
-        const part = parts[i]
-        
-        // Controlla se il formato è "nome.valore" (es. datamosh.666)
-        const dotMatch = part.match(/^([a-zA-Z]+)\.(\d+)$/)
-        if (dotMatch) {
-          const name = dotMatch[1].toLowerCase()
-          const seed = parseInt(dotMatch[2])
-          
-          if (validNames.indexOf(name) < 0) {
-            console.warn('Commander', `Unknown FX: ${name}. Valid: ${validNames.join(', ')}`)
-            continue
-          }
-          
-          // Genera 4 parametri dal seme
-          const params = generateParamsFromSeed(seed)
-          chain.push({
-            name: name,
-            p1: params[0],
-            p2: params[1],
-            p3: params[2],
-            p4: params[3]
-          })
-          continue
-        }
-        
-        // Formato legacy: nome.p1.p2.p3.p4
-        const params = part.split('.').map(s => s.trim()).filter(s => s.length > 0)
-        if (params.length >= 5) {
-          const name = params[0].toLowerCase()
-          if (validNames.indexOf(name) < 0) {
-            console.warn('Commander', `Unknown FX: ${name}. Valid: ${validNames.join(', ')}`)
-            continue
-          }
-          chain.push({
-            name: name,
-            p1: clamp(parseInt(params[1]) || 0, 0, 666),
-            p2: clamp(parseInt(params[2]) || 0, 0, 666),
-            p3: clamp(parseInt(params[3]) || 0, 0, 666),
-            p4: clamp(parseInt(params[4]) || 0, 0, 666)
-          })
-        } else {
-          console.warn('Commander', `Invalid FX format: ${part}. Use: name.seed or name.p1.p2.p3.p4`)
-        }
+        const seg = parts[i].trim().split('.')
+        const name = (seg[0] || '').toLowerCase()
+        if (names.indexOf(name) < 0) { continue }
+        chain.push({ name: name, seed: seg[1] ? parseFloat(seg[1]) : 333, drive: seg[2] ? parseFloat(seg[2]) : 500 })
       }
-
-      if (chain.length > 0) {
-        if (!client.fxEngine) { client.fxEngine = new HydraEffects() }
-        client.fxEngine.setChain(chain)
-      } else {
-        console.warn('Commander', 'No valid FX in chain')
-      }
+      client.fxManager.setChain(chain)
     }
   }
 
@@ -152,7 +78,7 @@ function Commander (client) {
     this.chars = this.str.split('')
     this.int = !isNaN(val) ? parseInt(val) : null
     this.parts = val.split(';')
-    this.ints = this.parts.map((val) => { return parseInt(val) })
+    this.ints = this.parts.map((v) => { return parseInt(v) })
     this.x = parseInt(this.parts[0])
     this.y = parseInt(this.parts[1])
     this.w = parseInt(this.parts[2])
@@ -182,7 +108,6 @@ function Commander (client) {
   }
 
   this.write = (key) => {
-    if (client.fxTextMode) { return }
     if (key === 'Backspace') { this.erase(); return }
     if (key === 'Enter') { this.run(); return }
     if (key === 'Escape') { this.stop(); return }
@@ -216,19 +141,14 @@ function Commander (client) {
   }
 
   this.onKeyDown = (e) => {
-    if (client.fxTextMode) { return }
     if (e.ctrlKey || e.metaKey) { return }
     client[this.isActive === true ? 'commander' : 'cursor'].write(e.key)
     e.stopPropagation()
   }
 
-  this.onKeyUp = (e) => {
-    client.update()
-  }
+  this.onKeyUp = (e) => { client.update() }
 
-  this.toString = function () {
-    return `${this.query}`
-  }
+  this.toString = function () { return `${this.query}` }
 
   function clamp (v, min, max) { return v < min ? min : v > max ? max : v }
 }

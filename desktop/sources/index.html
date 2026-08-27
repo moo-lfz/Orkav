@@ -20,18 +20,17 @@
     <script type="text/javascript" src="scripts/clock.js"></script>
     <script type="text/javascript" src="scripts/commander.js"></script>
     <script type="text/javascript" src="scripts/cursor.js"></script>
-    <script type="text/javascript" src="scripts/hydra-effects.js"></script>
+    <script type="text/javascript" src="scripts/audio-reactor.js"></script>
+    <script type="text/javascript" src="scripts/fx-situations.js"></script>
+    <script type="text/javascript" src="scripts/background.js"></script>
     <script type="text/javascript" src="scripts/client.js"></script>
     <title>Orca</title>
   </head>
   <body>
     <script>
       'use strict'
-
       const client = new Client()
-
       client.install(document.body)
-
       window.addEventListener('load', () => { 
         client.start()
         client.acels.inject('Orca')

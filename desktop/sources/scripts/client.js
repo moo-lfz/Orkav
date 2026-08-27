@@ -1,5 +1,5 @@
 'use strict'
-/* global library, Acels, Source, History, Orca, IO, Cursor, Commander, Clock, Theme, HydraEffects */
+/* global library, Acels, Source, History, Orca, IO, Cursor, Commander, Clock, Theme, AudioReactor, FxSituations, Background */
 
 function Client () {
   this.version = 178
@@ -14,7 +14,11 @@ function Client () {
   this.commander = new Commander(this)
   this.clock = new Clock(this)
 
-  this.scale = window.devicePixelRatio
+  this.audioReactor = new AudioReactor()
+  this.fxManager = new FxSituations(this, this.audioReactor)
+  this.background = new Background(this)
+
+  this.scale = 1
   this.grid = { w: 8, h: 8 }
   this.tile = {
     w: +localStorage.getItem('tilew') || 10,
@@ -25,10 +29,6 @@ function Client () {
   this.el = document.createElement('canvas')
   this.context = this.el.getContext('2d')
 
-  this.offscreenEl = document.createElement('canvas')
-  this.offscreenContext = this.offscreenEl.getContext('2d')
-
-  this.fxEngine = null
   this.fxTextMode = false
   this.fxTextBuffer = ''
 
@@ -36,6 +36,8 @@ function Client () {
     host.appendChild(this.el)
     this.theme.install(host)
     this.theme.default = { background: '#000000', f_high: '#ffffff', f_med: '#777777', f_low: '#444444', f_inv: '#000000', b_high: '#eeeeee', b_med: '#72dec2', b_low: '#444444', b_inv: '#ffb545' }
+
+    this.audioReactor.start()
 
     this.acels.set('File', 'New', 'CmdOrCtrl+N', () => { this.reset() })
     this.acels.set('File', 'Open', 'CmdOrCtrl+O', () => { this.source.open('orca', this.whenOpen, true) })
@@ -69,7 +71,17 @@ function Client () {
     this.acels.set('Cursor', 'Toggle Insert Mode', 'CmdOrCtrl+I', () => { this.cursor.ins = !this.cursor.ins })
     this.acels.set('Cursor', 'Toggle Block Comment', 'CmdOrCtrl+/', () => { this.cursor.comment() })
     this.acels.set('Cursor', 'Trigger Operator', 'CmdOrCtrl+P', () => { this.cursor.trigger() })
-    this.acels.set('Cursor', 'Reset', 'Escape', () => { this.toggleGuide(false); this.commander.stop(); this.clear(); this.clock.isPaused = false; this.cursor.reset(); this.fxTextMode = false })
+    this.acels.set('Cursor', 'Reset', 'Escape', () => {
+      this.toggleGuide(false)
+      this.commander.stop()
+      this.clear()
+      this.clock.isPaused = false
+      this.cursor.reset()
+      if (this.fxManager) { this.fxManager.set('none', 0, 0) }
+      if (this.background) { this.background.off() }
+      this.fxTextMode = false
+      this.fxTextBuffer = ''
+    })
 
     this.acels.set('Move', 'Move North', 'ArrowUp', () => { this.cursor.move(0, 1) })
     this.acels.set('Move', 'Move East', 'ArrowRight', () => { this.cursor.move(1, 0) })
@@ -107,19 +119,23 @@ function Client () {
     this.acels.set('View', 'Zoom Out', 'CmdOrCtrl+-', () => { this.modZoom(-0.0625) })
     this.acels.set('View', 'Zoom Reset', 'CmdOrCtrl+0', () => { this.modZoom(1, true) })
 
-    this.acels.set('View', 'Configure Visual FX', 'Alt+V', () => {
+    this.acels.set('View', 'Activate FX Situation', 'Alt+V', () => {
       this.fxTextMode = false
       this.commander.isActive = false
       this.commander.query = 'fx:'
-      this.commander.historyIndex = this.commander.history.length
       this.cursor.ins = false
       this.update()
     })
-    this.acels.set('View', 'Inject Strobe Text', 'Alt+S', () => {
-      this.commander.isActive = false
-      this.fxTextMode = true
-      this.fxTextBuffer = ''
-      this.cursor.ins = false
+    this.acels.set('View', 'Load GIF Swarm', 'Alt+G', () => {
+      this.background.loadSwarm()
+      this.update()
+    })
+    this.acels.set('View', 'Load Background Once', 'Alt+B', () => {
+      this.background.loadBackground()
+      this.update()
+    })
+    this.acels.set('View', 'Background Auto Cycle (30s x 1min)', 'Alt+Shift+B', () => {
+      this.background.startAuto()
       this.update()
     })
 
@@ -140,7 +156,6 @@ function Client () {
           if (this.fxTextBuffer.length > 0) {
             const upperText = this.fxTextBuffer.toUpperCase()
             this.orca.writeBlock(this.cursor.x, this.cursor.y, upperText)
-            this.injectFxText(upperText)
             this.cursor.move(upperText.length, 0)
           }
           this.fxTextMode = false
@@ -165,11 +180,11 @@ function Client () {
 
       if (this.commander.query.startsWith('fx:')) {
         if (e.key === 'Enter') {
-          const val = this.commander.query.substr(3)
+          const val = this.commander.query.substr(3).trim()
           if (val.length > 0) {
             this.commander.trigger(`fx:${val}`)
           } else {
-            if (this.fxEngine) { this.fxEngine.setChain([]) }
+            if (this.fxManager) { this.fxManager.set('none', 0, 0) }
             this.commander.query = ''
           }
           this.commander.isActive = false
@@ -177,6 +192,7 @@ function Client () {
           e.preventDefault(); e.stopPropagation(); return
         }
         if (e.key === 'Escape') {
+          if (this.fxManager) { this.fxManager.set('none', 0, 0) }
           this.commander.query = ''
           this.commander.isActive = false
           this.update()
@@ -232,60 +248,22 @@ function Client () {
 
   this.update = () => {
     if (document.hidden === true) { return }
-
-    this.clear()
+    const fxOn = this.fxManager && this.fxManager.activeSituation !== 'none'
+    if (fxOn) {
+      this.context.globalCompositeOperation = 'source-over'
+      this.context.fillStyle = 'rgba(0,0,0,0.10)'
+      this.context.fillRect(0, 0, this.el.width, this.el.height)
+    } else {
+      this.clear()
+    }
     this.ports = this.findPorts()
 
-    if (this.fxEngine && this.fxEngine.activeChain && this.fxEngine.activeChain.length > 0 && this.el.width > 0 && this.el.height > 0) {
-      this.clearOffscreen()
-      this.drawProgramOffscreen()
-      if (this.fxEngine.canvas.width !== this.el.width || this.fxEngine.canvas.height !== this.el.height) {
-        this.fxEngine.resize(this.el.width, this.el.height)
-      }
-      this.fxEngine.render(this.offscreenEl)
-      // Copia FX RITAGLIATA solo alla griglia: il terminale non viene mai toccato
-      const gridH = this.tile.hs * this.orca.h
-      this.context.drawImage(this.fxEngine.canvas, 0, 0, this.el.width, gridH, 0, 0, this.el.width, gridH)
-    } else {
-      this.drawProgram()
-    }
-
-    // Terminale e guida SEMPRE dopo, sempre puliti
+    this.background.draw(this.context, this.el.width, this.el.height)
+    this.background.drawSwarm(this.context, this.el.width, this.el.height)
+    this.drawProgram()
+    if (this.fxManager) { this.fxManager.postProcess() }
     this.drawInterface()
     this.drawGuide()
-  }
-
-  this.injectFxText = (text) => {
-    if (!this.fxEngine) { this.fxEngine = new HydraEffects() }
-    this.fxEngine.setChain([{ name: 'particle', p1: 600, p2: 8, p3: 100, p4: 400 }])
-  }
-
-  this.clearOffscreen = () => {
-    this.offscreenContext.clearRect(0, 0, this.offscreenEl.width, this.offscreenEl.height)
-  }
-
-  this.drawProgramOffscreen = () => {
-    const selection = this.cursor.read()
-    for (let y = 0; y < this.orca.h; y++) {
-      for (let x = 0; x < this.orca.w; x++) {
-        if (this.isInvisible(x, y)) { continue }
-        const g = this.orca.glyphAt(x, y)
-        const glyph = g !== '.' ? g : this.isCursor(x, y) ? (this.clock.isPaused ? '~' : '@') : this.isMarker(x, y) ? '+' : g
-        this.drawSpriteOffscreen(x, y, glyph, this.makeStyle(x, y, glyph, selection))
-      }
-    }
-  }
-
-  this.drawSpriteOffscreen = (x, y, g, type) => {
-    const theme = this.makeTheme(type)
-    if (theme.bg) {
-      this.offscreenContext.fillStyle = theme.bg
-      this.offscreenContext.fillRect(x * this.tile.ws, (y) * this.tile.hs, this.tile.ws, this.tile.hs)
-    }
-    if (theme.fg) {
-      this.offscreenContext.fillStyle = theme.fg
-      this.offscreenContext.fillText(g, (x + 0.5) * this.tile.ws, (y + 1) * this.tile.hs)
-    }
   }
 
   this.whenOpen = (file, text) => {
@@ -337,8 +315,8 @@ function Client () {
     this.resize(true)
   }
 
-  this.isCursor = (x, y) => x === this.cursor.x && y === this.cursor.y
-  this.isMarker = (x, y) => x % this.grid.w === 0 && y % this.grid.h === 0
+  this.isCursor = (x, y) => { return x === this.cursor.x && y === this.cursor.y }
+  this.isMarker = (x, y) => { return x % this.grid.w === 0 && y % this.grid.h === 0 }
   this.isNear = (x, y) => {
     return x > (parseInt(this.cursor.x / this.grid.w) * this.grid.w) - 1 && x <= ((1 + parseInt(this.cursor.x / this.grid.w)) * this.grid.w) && y > (parseInt(this.cursor.y / this.grid.h) * this.grid.h) - 1 && y <= ((1 + parseInt(this.cursor.y / this.grid.h)) * this.grid.h)
   }
@@ -406,26 +384,43 @@ function Client () {
   }
 
   this.drawInterface = () => {
-    this.write(`${this.cursor.inspect()}`, this.grid.w * 0, this.orca.h, this.grid.w - 1)
-    this.write(`${this.cursor.x},${this.cursor.y}${this.cursor.ins ? '+' : ''}`, this.grid.w * 1, this.orca.h, this.grid.w, this.cursor.ins ? 1 : 2)
-    this.write(`${this.cursor.w}:${this.cursor.h}`, this.grid.w * 2, this.orca.h, this.grid.w)
-    this.write(`${this.orca.f}f${this.clock.isPaused ? '~' : ''}`, this.grid.w * 3, this.orca.h, this.grid.w)
-    this.write(`${this.io.inspect(this.grid.w)}`, this.grid.w * 4, this.orca.h, this.grid.w - 1)
-    this.write(this.orca.f < 250 ? `< ${this.io.midi.toInputString()}` : '', this.grid.w * 5, this.orca.h, this.grid.w * 4)
+    const ctx = this.context
+    const tile = this.tile
+    const termHeightPx = (tile.hs * 2) + 20
+    const termY = this.el.height - termHeightPx
+
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.globalAlpha = 1.0
+    ctx.fillStyle = this.theme.active.background || '#000000'
+    ctx.fillRect(0, termY, this.el.width, termHeightPx)
+
+    ctx.textBaseline = 'bottom'
+    ctx.textAlign = 'center'
+    ctx.font = `${tile.hs * 0.75}px input_mono_medium`
+
+    const termRow = Math.floor(termY / tile.hs)
+    const termRow2 = termRow + 1
+
+    this.write(`${this.cursor.inspect()}`, this.grid.w * 0, termRow, this.grid.w - 1)
+    this.write(`${this.cursor.x},${this.cursor.y}${this.cursor.ins ? '+' : ''}`, this.grid.w * 1, termRow, this.grid.w, this.cursor.ins ? 1 : 2)
+    this.write(`${this.cursor.w}:${this.cursor.h}`, this.grid.w * 2, termRow, this.grid.w)
+    this.write(`${this.orca.f}f${this.clock.isPaused ? '~' : ''}`, this.grid.w * 3, termRow, this.grid.w)
+    this.write(`${this.io.inspect(this.grid.w)}`, this.grid.w * 4, termRow, this.grid.w - 1)
+    this.write(this.orca.f < 250 ? `< ${this.io.midi.toInputString()}` : '', this.grid.w * 5, termRow, this.grid.w * 4)
 
     if (this.fxTextMode) {
-      this.write(`[FX TEXT] ${this.fxTextBuffer}${this.orca.f % 2 === 0 ? '_' : ''}`, this.grid.w * 0, this.orca.h + 1, this.grid.w * 6, 1)
+      this.write(`[FX TEXT] ${this.fxTextBuffer}${this.orca.f % 2 === 0 ? '_' : ''}`, this.grid.w * 0, termRow2, this.grid.w * 6, 1)
     } else if (this.commander.query.startsWith('fx:')) {
-      this.write(`${this.commander.query}${this.orca.f % 2 === 0 ? '_' : ''}`, this.grid.w * 0, this.orca.h + 1, this.grid.w * 6, 1)
+      this.write(`${this.commander.query}${this.orca.f % 2 === 0 ? '_' : ''}`, this.grid.w * 0, termRow2, this.grid.w * 6, 1)
     } else if (this.commander.isActive === true) {
-      this.write(`${this.commander.query}${this.orca.f % 2 === 0 ? '_' : ''}`, this.grid.w * 0, this.orca.h + 1, this.grid.w * 4)
+      this.write(`${this.commander.query}${this.orca.f % 2 === 0 ? '_' : ''}`, this.grid.w * 0, termRow2, this.grid.w * 4)
     } else {
-      this.write(this.orca.f < 25 ? `ver${this.version}` : `${Object.keys(this.source.cache).length} mods`, this.grid.w * 0, this.orca.h + 1, this.grid.w)
-      this.write(`${this.orca.w}x${this.orca.h}`, this.grid.w * 1, this.orca.h + 1, this.grid.w)
-      this.write(`${this.grid.w}/${this.grid.h}${this.tile.w !== 10 ? ' ' + (this.tile.w / 10).toFixed(1) : ''}`, this.grid.w * 2, this.orca.h + 1, this.grid.w)
-      this.write(`${this.clock}`, this.grid.w * 3, this.orca.h + 1, this.grid.w, this.clock.isPuppet ? 3 : this.io.midi.isClock ? 11 : this.clock.isPaused ? 20 : 2)
-      this.write(`${display(Object.keys(this.orca.variables).join(''), this.orca.f, this.grid.w - 1)}`, this.grid.w * 4, this.orca.h + 1, this.grid.w - 1)
-      this.write(this.orca.f < 250 ? `> ${this.io.midi.toOutputString()}` : '', this.grid.w * 5, this.orca.h + 1, this.grid.w * 4)
+      this.write(this.orca.f < 25 ? `ver${this.version}` : `${Object.keys(this.source.cache).length} mods`, this.grid.w * 0, termRow2, this.grid.w)
+      this.write(`${this.orca.w}x${this.orca.h}`, this.grid.w * 1, termRow2, this.grid.w)
+      this.write(`${this.grid.w}/${this.grid.h}${this.tile.w !== 10 ? ' ' + (this.tile.w / 10).toFixed(1) : ''}`, this.grid.w * 2, termRow2, this.grid.w)
+      this.write(`${this.clock}`, this.grid.w * 3, termRow2, this.grid.w, this.clock.isPuppet ? 3 : this.io.midi.isClock ? 11 : this.clock.isPaused ? 20 : 2)
+      this.write(`${display(Object.keys(this.orca.variables).join(''), this.orca.f, this.grid.w - 1)}`, this.grid.w * 4, termRow2, this.grid.w - 1)
+      this.write(this.orca.f < 250 ? `> ${this.io.midi.toOutputString()}` : '', this.grid.w * 5, termRow2, this.grid.w * 4)
     }
   }
 
@@ -462,41 +457,42 @@ function Client () {
     }
   }
 
+  // TUTTO LO SCHERMO: canvas = finestra esatta, griglia ceil per coprire i bordi
   this.resize = () => {
-    const pad = 30
-    const size = { w: window.innerWidth - (pad * 2), h: window.innerHeight - ((pad * 2) + this.tile.h * 2) }
-    const tiles = { w: Math.ceil(size.w / this.tile.w), h: Math.ceil(size.h / this.tile.h) }
-    const bounds = this.orca.bounds()
+    const W = window.innerWidth
+    const H = window.innerHeight
 
+    const tiles = {
+      w: Math.ceil(W / this.tile.w),
+      h: Math.ceil(H / this.tile.h)
+    }
+
+    const bounds = this.orca.bounds()
     if (tiles.w < bounds.w + 1) { tiles.w = bounds.w + 1 }
     if (tiles.h < bounds.h + 1) { tiles.h = bounds.h + 1 }
+
+    const maxW = 400
+    const maxH = 200
+    if (tiles.w > maxW) { tiles.w = maxW }
+    if (tiles.h > maxH) { tiles.h = maxH }
+
     this.crop(tiles.w, tiles.h)
 
     if (this.cursor.x >= tiles.w) { this.cursor.moveTo(tiles.w - 1, this.cursor.y) }
     if (this.cursor.y >= tiles.h) { this.cursor.moveTo(this.cursor.x, tiles.h - 1) }
 
-    const w = this.tile.ws * this.orca.w
-    const h = (this.tile.hs + (this.tile.hs / 5)) * this.orca.h
-
-    if (w === this.el.width && h === this.el.height && this.offscreenEl.width === w) { return }
+    if (W === this.el.width && H === this.el.height) { return }
 
     console.log(`Resized to: ${this.orca.w}x${this.orca.h}`)
 
-    this.el.width = w
-    this.el.height = h
-    this.offscreenEl.width = w
-    this.offscreenEl.height = h
-
-    this.el.style.width = `${Math.ceil(this.tile.w * this.orca.w)}px`
-    this.el.style.height = `${Math.ceil((this.tile.h + (this.tile.h / 5)) * this.orca.h)}px`
+    this.el.width = W
+    this.el.height = H
+    this.el.style.width = `${W}px`
+    this.el.style.height = `${H}px`
 
     this.context.textBaseline = 'bottom'
     this.context.textAlign = 'center'
     this.context.font = `${this.tile.hs * 0.75}px input_mono_medium`
-
-    this.offscreenContext.textBaseline = 'bottom'
-    this.offscreenContext.textAlign = 'center'
-    this.offscreenContext.font = `${this.tile.hs * 0.75}px input_mono_medium`
 
     this.update()
   }
