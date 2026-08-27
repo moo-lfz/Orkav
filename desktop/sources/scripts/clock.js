@@ -1,3 +1,4 @@
+const { AbletonLink } = require('@ktamas77/abletonlink');
 'use strict'
 
 /* global Blob */
@@ -11,12 +12,48 @@ function Clock (client) {
   this.isPuppet = false
 
   this.speed = { value: 120, target: 120 }
+  this.isAutomating = false // Flag per automazioni BPM interne
+  this.isReceivingTempo = false // Flag per evitare loop con Link
+  this.quantize = true // Attiva la quantizzazione Play/Stop
 
   this.start = function () {
     const memory = parseInt(window.localStorage.getItem('bpm'))
-    const target = memory >= 60 ? memory : 120
+    const target = memory >= 20 ? memory : 120
     this.setSpeed(target, target, true)
     this.play()
+    this.link = new AbletonLink(120);
+    this.link.enable(true);
+    this.link.enableStartStopSync(true);
+
+    // LINK INPUT: Ricezione BPM dalla rete
+    this.link.setTempoCallback((tempo) => {
+      if (this.isAutomating !== true) {
+        this.isReceivingTempo = true; 
+        this.setSpeed(tempo, tempo, true);
+        this.isReceivingTempo = false; 
+      }
+    });
+
+    // LINK INPUT: Ricezione Play/Stop dalla rete (con Quantizzazione)
+    this.link.setStartStopCallback((isPlaying) => {
+      if (this.quantize) {
+        // Aspetta il prossimo downbeat (frame divisibile per 4)
+        const framesToNextBeat = 4 - (client.orca.f % 4);
+        setTimeout(() => {
+          if (isPlaying) {
+            this.play();
+          } else {
+            this.stop();
+          }
+        }, framesToNextBeat * (60000 / this.speed.value) / 4);
+      } else {
+        if (isPlaying) {
+          this.play();
+        } else {
+          this.stop();
+        }
+      }
+    });
   }
 
   this.touch = function () {
@@ -31,15 +68,21 @@ function Clock (client) {
 
   this.setSpeed = (value, target = null, setTimer = false) => {
     if (this.speed.value === value && this.speed.target === target && this.timer) { return }
-    if (value) { this.speed.value = clamp(value, 60, 300) }
-    if (target) { this.speed.target = clamp(target, 60, 300) }
+    if (value) { this.speed.value = clamp(value, 20, 999) }
+    if (target) { this.speed.target = clamp(target, 20, 999) }
     if (setTimer === true) { this.setTimer(this.speed.value) }
+    
+    if (this.link && this.isReceivingTempo !== true) {
+      this.link.setTempo(this.speed.value);
+    }
   }
 
   this.modSpeed = function (mod = 0, animate = false) {
     if (animate === true) {
+      this.isAutomating = true;
       this.setSpeed(null, this.speed.target + mod)
     } else {
+      this.isAutomating = false;
       this.setSpeed(this.speed.value + mod, this.speed.value + mod, true)
       client.update()
     }
@@ -60,12 +103,13 @@ function Clock (client) {
     console.log('Clock', 'Play', msg, midiStart)
     if (this.isPaused === false && !midiStart) { return }
     this.isPaused = false
+    if (this.link) { this.link.setIsPlaying(true); }
     if (this.isPuppet === true) {
       console.warn('Clock', 'External Midi control')
-      if (!pulse.frame || midiStart) { // no frames counted while paused (starting from no clock, unlikely) or triggered by MIDI clock START
-        this.setFrame(0) // make sure frame aligns with pulse count for an accurate beat
+      if (!pulse.frame || midiStart) { 
+        this.setFrame(0) 
         pulse.frame = 0
-        pulse.count = 5 // by MIDI standard next pulse is the beat
+        pulse.count = 5 
       }
     } else {
       if (msg === true) { client.io.midi.sendClockStart() }
@@ -77,6 +121,7 @@ function Clock (client) {
     console.log('Clock', 'Stop')
     if (this.isPaused === true) { return }
     this.isPaused = true
+    if (this.link) { this.link.setIsPlaying(false); }
     if (this.isPuppet === true) {
       console.warn('Clock', 'External Midi control')
     } else {
@@ -93,7 +138,7 @@ function Clock (client) {
     count: 0,
     last: null,
     timer: null,
-    frame: 0 // paused frame counter
+    frame: 0 
   }
 
   this.tap = function () {
@@ -133,7 +178,7 @@ function Clock (client) {
   // Timer
 
   this.setTimer = function (bpm) {
-    if (bpm < 60) { console.warn('Clock', 'Error ' + bpm); return }
+    if (bpm < 20) { console.warn('Clock', 'Error ' + bpm); return }
     this.clearTimer()
     window.localStorage.setItem('bpm', bpm)
     this.timer = new Worker(worker)

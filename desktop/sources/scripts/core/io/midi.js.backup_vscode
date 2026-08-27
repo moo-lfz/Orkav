@@ -36,8 +36,9 @@ function Midi (client) {
     }
   }
 
-    this.trigger = function (item, down) {
- if (!this.outputDevice() && (item.port === -1 || item.port === undefined)) { console.warn('MIDI', 'No midi output!'); return }
+  this.trigger = function (item, down) {
+    if (!this.outputDevice()) { console.warn('MIDI', 'No midi output!'); return }
+
     const transposed = this.transpose(item.note, item.octave)
     const channel = !isNaN(item.channel) ? parseInt(item.channel) : client.orca.valueOf(item.channel)
 
@@ -49,15 +50,7 @@ function Midi (client) {
 
     if (!n || c === 127) { return }
 
-    // NUOVA LOGICA DI ROUTING:
-    let devices = []
-    if (item.port !== undefined && item.port >= 0 && item.port < this.outputs.length) {
-      devices = [this.outputs[item.port]]
-    } else {
-      devices = this.outputDevice()
-    }
-
-    devices.forEach(device => device.send([c, n, v]))
+    this.outputDevice().send([c, n, v])
   }
 
   this.press = function (item) {
@@ -78,8 +71,8 @@ function Midi (client) {
     }
   }
 
-   this.push = function (channel, octave, note, velocity, length, isPlayed = false, port = -1) {
-    const item = { channel, octave, note, velocity, length, isPlayed, port }
+  this.push = function (channel, octave, note, velocity, length, isPlayed = false) {
+    const item = { channel, octave, note, velocity, length, isPlayed }
     // Retrigger duplicates
     for (const id in this.stack) {
       const dup = this.stack[id]
@@ -87,13 +80,12 @@ function Midi (client) {
     }
     this.stack.push(item)
   }
-   
 
   this.allNotesOff = function () {
     if (!this.outputDevice()) { return }
     console.log('MIDI', 'All Notes Off')
     for (let chan = 0; chan < 16; chan++) {
-     this.outputDevice().forEach(device => device.send([0xB0 + chan, 123, 0]))
+      this.outputDevice().send([0xB0 + chan, 123, 0])
     }
   }
 
@@ -104,14 +96,14 @@ function Midi (client) {
   this.sendClockStart = function () {
     if (!this.outputDevice()) { return }
     this.isClock = true
-    this.outputDevice().forEach(device => device.send([0xFA], 0))
+    this.outputDevice().send([0xFA], 0)
     console.log('MIDI', 'MIDI Start Sent')
   }
 
   this.sendClockStop = function () {
     if (!this.outputDevice()) { return }
     this.isClock = false
-    this.outputDevice().forEach(device => device.send([0xFC], 0))
+    this.outputDevice().send([0xFC], 0)
     console.log('MIDI', 'MIDI Stop Sent')
   }
 
@@ -125,7 +117,7 @@ function Midi (client) {
 
     for (let id = 0; id < 6; id++) {
       if (this.ticks[id]) { clearTimeout(this.ticks[id]) }
-      this.ticks[id] = setTimeout(() => { this.outputDevice().forEach(device => device.send([0xF8], 0))}, parseInt(id) * frameFrag)
+      this.ticks[id] = setTimeout(() => { this.outputDevice().send([0xF8], 0) }, parseInt(id) * frameFrag)
     }
   }
 
@@ -152,27 +144,13 @@ function Midi (client) {
 
   // Tools
 
- this.selectOutput = function (id) {
-  if (id === -1) { 
-    this.outputIndexes = []; 
-    console.log('MIDI', 'Select Output Device: None'); 
-    return 
-  }
-  if (!this.outputs[id]) { 
-    console.warn('MIDI', `Unknown device with id ${id}`); 
-    return 
-  }
-  const index = this.outputIndexes.indexOf(parseInt(id))
-  if (index > -1) {
-    this.outputIndexes.splice(index, 1)
-    console.log('MIDI', `Deselect Output Device: ${this.outputs[id].name}`)
-  } else {
-    this.outputIndexes.push(parseInt(id))
-    console.log('MIDI', `Select Output Device: ${this.outputs[id].name}`)
-  }
-}
+  this.selectOutput = function (id) {
+    if (id === -1) { this.outputIndexes = []; console.log('MIDI', 'Select Output Device: None'); return }
+    if (!this.outputs[id]) { console.warn('MIDI', `Unknown device with id ${id}`); return }
 
-   
+    this.outputIndex = parseInt(id)
+    console.log('MIDI', `Select Output Device: ${this.outputDevice().name}`)
+  }
 
   this.selectInput = function (id) {
     if (this.inputDevice()) { this.inputDevice().onmidimessage = null }
@@ -184,28 +162,19 @@ function Midi (client) {
     console.log('MIDI', `Select Input Device: ${this.inputDevice().name}`)
   }
 
- this.outputDevice = function () {
-  var devices = []
-  for (var i = 0; i < this.outputIndexes.length; i++) {
-    var index = this.outputIndexes[i]
-    var device = this.outputs[index]
-    if (device) {
-      devices.push(device)
-    }
+    return this.outputs[this.outputIndex]
+}this.outputDevice = function () {
+    return this.outputIndexes.map(index => this.outputs[index]).filter(device => device)
   }
-  return devices
-}
 
   this.inputDevice = function () {
     return this.inputs[this.inputIndex]
   }
 
- this.selectNextOutput = function () {
-  const nextIndex = this.outputIndexes.length > 0 
-    ? (Math.max(...this.outputIndexes) + 1) % this.outputs.length 
-    : 0
-  this.selectOutput(nextIndex)
-}
+  this.selectNextOutput = () => {
+    this.outputIndex = this.outputIndex < this.outputs.length ? this.outputIndex + 1 : 0
+    client.update()
+  }
 
   this.selectNextInput = () => {
     const id = this.inputIndex < this.inputs.length - 1 ? this.inputIndex + 1 : -1
@@ -258,28 +227,20 @@ function Midi (client) {
   }
 
   this.toString = function () {
-    const devices = this.outputDevice();
-    return !navigator.requestMIDIAccess ? 'No Midi Support' 
-           : devices.length > 0 ? devices.map(d => d.name).join(' + ') 
-           : 'No Midi Device'
+    return !navigator.requestMIDIAccess ? 'No Midi Support' : this.outputDevice() ? `${this.outputDevice().name}` : 'No Midi Device'
   }
 
   this.toInputString = () => {
     return !navigator.requestMIDIAccess ? 'No Midi Support' : this.inputDevice() ? `${this.inputDevice().name}` : 'No Input Device'
   }
 
-    this.toOutputString = () => {
-    const devices = this.outputDevice();
-    return !navigator.requestMIDIAccess ? 'No Midi Support' 
-           : devices.length > 0 ? devices.map(d => d.name).join(' + ') 
-           : 'No Output Device'
+  this.toOutputString = () => {
+    return !navigator.requestMIDIAccess ? 'No Midi Support' : this.outputDevice() ? `${this.outputDevice().name}` : 'No Output Device'
   }
-
 
   this.length = function () {
     return this.stack.length
   }
 
   function clamp (v, min, max) { return v < min ? min : v > max ? max : v }
-
 }

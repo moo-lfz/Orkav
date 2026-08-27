@@ -549,6 +549,7 @@ library[':'] = function OperatorMidi (orca, x, y, passive) {
   this.ports.note = { x: 3, y: 0 }
   this.ports.velocity = { x: 4, y: 0, default: 'f', clamp: { min: 0, max: 16 } }
   this.ports.length = { x: 5, y: 0, default: '1', clamp: { min: 0, max: 32 } }
+  this.ports.port = { x: 6, y: 0, default: '-1' } // <--- AGGIUNTO (6° parametro)
 
   this.operation = function (force = false) {
     if (!this.hasNeighbor('*') && force === false) { return }
@@ -563,8 +564,10 @@ library[':'] = function OperatorMidi (orca, x, y, passive) {
     const note = this.listen(this.ports.note)
     const velocity = this.listen(this.ports.velocity, true)
     const length = this.listen(this.ports.length, true)
+    const port = this.listen(this.ports.port, true) // <--- LEGGIAMO IL 6°
 
-    client.io.midi.push(channel, octave, note, velocity, length)
+    // Passa il 6° parametro "port" alla funzione push di midi.js
+    client.io.midi.push(channel, octave, note, velocity, length, false, port)
 
     if (force === true) {
       client.io.midi.run()

@@ -1,12 +1,9 @@
 'use strict'
-
 function Commander (client) {
   this.isActive = false
   this.query = ''
   this.history = []
   this.historyIndex = 0
-
-  // Library
 
   this.passives = {
     find: (p) => { client.cursor.find(p.str) },
@@ -22,7 +19,6 @@ function Commander (client) {
   }
 
   this.actives = {
-    // Ports
     osc: (p) => { client.io.osc.select(p.int) },
     udp: (p) => {
       client.io.udp.selectOutput(p.x)
@@ -35,15 +31,12 @@ function Commander (client) {
     ip: (p) => { client.io.setIp(p.str) },
     cc: (p) => { client.io.cc.setOffset(p.int) },
     pg: (p) => { client.io.cc.stack.push({ channel: clamp(p.ints[0], 0, 15), bank: p.ints[1], sub: p.ints[2], pgm: clamp(p.ints[3], 0, 127), type: 'pg' }); client.io.cc.run() },
-    // Cursor
     copy: (p) => { client.cursor.copy() },
     paste: (p) => { client.cursor.paste(true) },
     erase: (p) => { client.cursor.erase() },
-    // Controls
     play: (p) => { client.clock.play() },
     stop: (p) => { client.clock.stop() },
     run: (p) => { client.run() },
-    // Time
     apm: (p) => { client.clock.setSpeed(null, p.int) },
     bpm: (p) => { client.clock.setSpeed(p.int, p.int, true) },
     frame: (p) => { client.clock.setFrame(p.int) },
@@ -53,13 +46,11 @@ function Commander (client) {
       const formatted = new Date(250 * (client.orca.f * (60 / client.clock.speed.value))).toISOString().substr(14, 5).replace(/:/g, '')
       client.orca.writeBlock(origin ? origin.x : client.cursor.x, origin ? origin.y : client.cursor.y, `${formatted}`)
     },
-    // Themeing
     color: (p) => {
       if (p.parts[0]) { client.theme.set('b_low', p.parts[0]) }
       if (p.parts[1]) { client.theme.set('b_med', p.parts[1]) }
       if (p.parts[2]) { client.theme.set('b_high', p.parts[2]) }
     },
-    // Edit
     find: (p) => { client.cursor.find(p.str) },
     select: (p) => { client.cursor.select(p.x, p.y, p.w || 0, p.h || 0) },
     inject: (p, origin) => {
@@ -70,10 +61,47 @@ function Commander (client) {
     },
     write: (p) => {
       client.orca.writeBlock(p._x || client.cursor.x, p._y || client.cursor.y, p._str)
+    },
+    fx: (p) => {
+      if (!p.str || p.str.trim().length === 0) {
+        if (client.fxEngine) { client.fxEngine.setChain([]) }
+        console.log('FX Chain: CLEARED')
+        return
+      }
+
+      const validNames = ['datamosh', 'glitch', 'particle', 'displace']
+      const parts = p.str.split('+').map(s => s.trim()).filter(s => s.length > 0)
+      const chain = []
+
+      for (let i = 0; i < parts.length; i++) {
+        const params = parts[i].split('.').map(s => s.trim()).filter(s => s.length > 0)
+        if (params.length >= 5) {
+          const name = params[0].toLowerCase()
+          if (validNames.indexOf(name) < 0) {
+            console.warn('Commander', `Unknown FX: ${name}. Valid: ${validNames.join(', ')}`)
+            continue
+          }
+          chain.push({
+            name: name,
+            p1: clamp(parseInt(params[1]) || 0, 0, 666),
+            p2: clamp(parseInt(params[2]) || 0, 0, 666),
+            p3: clamp(parseInt(params[3]) || 0, 0, 666),
+            p4: clamp(parseInt(params[4]) || 0, 0, 666)
+          })
+        } else {
+          console.warn('Commander', `Invalid FX format: ${parts[i]}. Use: name.p1.p2.p3.p4`)
+        }
+      }
+
+      if (chain.length > 0) {
+        if (!client.fxEngine) { client.fxEngine = new HydraEffects() }
+        client.fxEngine.setChain(chain)
+      } else {
+        console.warn('Commander', 'No valid FX in chain')
+      }
     }
   }
 
-  // Make shorthands
   for (const id in this.actives) {
     this.actives[id.substr(0, 2)] = this.actives[id]
   }
@@ -89,13 +117,10 @@ function Commander (client) {
     this.y = parseInt(this.parts[1])
     this.w = parseInt(this.parts[2])
     this.h = parseInt(this.parts[3])
-    // Optionals Position Style
     this._str = this.parts[0]
     this._x = parseInt(this.parts[1])
     this._y = parseInt(this.parts[2])
   }
-
-  // Begin
 
   this.start = (q = '') => {
     this.isActive = true
@@ -117,6 +142,7 @@ function Commander (client) {
   }
 
   this.write = (key) => {
+    if (client.fxTextMode) { return }
     if (key === 'Backspace') { this.erase(); return }
     if (key === 'Enter') { this.run(); return }
     if (key === 'Escape') { this.stop(); return }
@@ -139,9 +165,7 @@ function Commander (client) {
     fn(new Param(val), origin)
     this.history.push(msg)
     this.historyIndex = this.history.length
-    if (stopping) {
-      this.stop()
-    }
+    if (stopping) { this.stop() }
   }
 
   this.preview = function (msg = this.query) {
@@ -151,9 +175,8 @@ function Commander (client) {
     this.passives[cmd](new Param(val), false)
   }
 
-  // Events
-
   this.onKeyDown = (e) => {
+    if (client.fxTextMode) { return }
     if (e.ctrlKey || e.metaKey) { return }
     client[this.isActive === true ? 'commander' : 'cursor'].write(e.key)
     e.stopPropagation()
@@ -163,13 +186,9 @@ function Commander (client) {
     client.update()
   }
 
-  // UI
-
   this.toString = function () {
     return `${this.query}`
   }
-
-  // Utils
 
   function clamp (v, min, max) { return v < min ? min : v > max ? max : v }
 }
