@@ -3,3 +3,4 @@ Nothing should be ignored since only source files (.js) were modified and no bui
 dist/
 build/
 *.log
+node_modules/
