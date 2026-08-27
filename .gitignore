@@ -1,5 +1,5 @@
-node_modules/
-builds/
-.DS_Store
-*/.DS_Store
-.vscode/
+Nothing should be ignored since only source files (.js) were modified and no build artifacts, dependencies, or temp files were present in the changes.node_modules/
+.next/
+dist/
+build/
+*.log

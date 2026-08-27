@@ -176,7 +176,7 @@ HydraEffects.prototype.resize = function (width, height) {
 }
 
 HydraEffects.prototype.setChain = function (chainArray) {
-  this.activeChain = chainArray.slice(0, 7)
+  this.activeChain = chainArray.slice(0, 8)
   console.log('FX Chain:', this.activeChain)
 }
 

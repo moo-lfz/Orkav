@@ -73,8 +73,47 @@ function Commander (client) {
       const parts = p.str.split('+').map(s => s.trim()).filter(s => s.length > 0)
       const chain = []
 
+      // Funzione per generare 4 parametri da un singolo valore seme (0-999)
+      function generateParamsFromSeed(seed) {
+        let state = seed | 0
+        const params = []
+        for (let i = 0; i < 4; i++) {
+          state ^= state << 13
+          state ^= state >> 17
+          state ^= state << 5
+          params.push(Math.abs(state % 667))
+        }
+        return params
+      }
+
       for (let i = 0; i < parts.length; i++) {
-        const params = parts[i].split('.').map(s => s.trim()).filter(s => s.length > 0)
+        const part = parts[i]
+        
+        // Controlla se il formato è "nome.valore" (es. datamosh.666)
+        const dotMatch = part.match(/^([a-zA-Z]+)\.(\d+)$/)
+        if (dotMatch) {
+          const name = dotMatch[1].toLowerCase()
+          const seed = parseInt(dotMatch[2])
+          
+          if (validNames.indexOf(name) < 0) {
+            console.warn('Commander', `Unknown FX: ${name}. Valid: ${validNames.join(', ')}`)
+            continue
+          }
+          
+          // Genera 4 parametri dal seme
+          const params = generateParamsFromSeed(seed)
+          chain.push({
+            name: name,
+            p1: params[0],
+            p2: params[1],
+            p3: params[2],
+            p4: params[3]
+          })
+          continue
+        }
+        
+        // Formato legacy: nome.p1.p2.p3.p4
+        const params = part.split('.').map(s => s.trim()).filter(s => s.length > 0)
         if (params.length >= 5) {
           const name = params[0].toLowerCase()
           if (validNames.indexOf(name) < 0) {
@@ -89,7 +128,7 @@ function Commander (client) {
             p4: clamp(parseInt(params[4]) || 0, 0, 666)
           })
         } else {
-          console.warn('Commander', `Invalid FX format: ${parts[i]}. Use: name.p1.p2.p3.p4`)
+          console.warn('Commander', `Invalid FX format: ${part}. Use: name.seed or name.p1.p2.p3.p4`)
         }
       }
 
