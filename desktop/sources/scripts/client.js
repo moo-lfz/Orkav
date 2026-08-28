@@ -174,7 +174,6 @@ function Client () {
     this.acels.install(window)
     this.acels.pipe(this.commander)
 
-    // Listener capture: intercetta SOLO le modalita attive, altrimenti lascia passare tutto ad acels
     window.addEventListener('keydown', (e) => {
       if (this.bigTextMode) {
         if (e.key === 'Enter') {
@@ -183,7 +182,7 @@ function Client () {
               text: this.bigTextBuffer.toUpperCase().slice(0, 42),
               mode: Math.floor(Math.random() * 3),
               born: performance.now(),
-              ttl: 4000 + Math.random() * 4000,
+              ttl: 8000 + Math.random() * 6000,
               seed: Math.random()
             })
           }
@@ -268,7 +267,6 @@ function Client () {
           e.preventDefault(); e.stopPropagation(); return
         }
       }
-      // Se nessuna modalita e attiva: NON toccare l'evento, la digitazione va ad acels/cursor
     }, true)
   }
 
@@ -305,7 +303,6 @@ function Client () {
     this.update()
   }
 
-  // Pipeline FX a 60fps (ogni frame)
   this.update = () => {
     if (document.hidden === true) { return }
     const fxOn = this.fxManager && this.fxManager.chain && this.fxManager.chain.length > 0
@@ -331,8 +328,7 @@ function Client () {
     this.drawGuide()
   }
 
-  // Scritte cubitali: quasi tutta la verticale, ripetute senza spazi,
-  // lampeggiano con fasi trasparenti (si vede attraverso) e poi si sgretolano negli FX
+  // Scritte cubitali: 92% della verticale, trasparenti (screen), si scompongono negli FX
   this.drawBigTexts = (ctx, W, gridH) => {
     if (!this.bigTexts.length && !this.bigTextMode) { return }
     const now = performance.now()
@@ -341,7 +337,7 @@ function Client () {
       const t = this.bigTexts[i]
       const age = now - t.born
       if (age > t.ttl) { this.bigTexts.splice(i, 1); continue }
-      const size = Math.floor(gridH * 0.78)
+      const size = Math.floor(gridH * 0.92)
       ctx.font = `bold ${size}px input_mono_medium`
       ctx.textBaseline = 'middle'
       ctx.textAlign = 'left'
@@ -350,20 +346,21 @@ function Client () {
       let full = ''
       for (let r = 0; r < reps; r++) { full += t.text }
       const fullW = unitW * (reps - 1)
-      // Fasi: colore A / colore B / trasparente (si vede attraverso) / colore C
-      const phase = Math.floor(age / 140) % 4
-      if (phase === 2) { ctx.globalAlpha = 0 } else {
-        ctx.globalAlpha = phase === 3 ? 0.55 : 0.95
-        ctx.fillStyle = cols[(Math.floor(t.seed * 10) + phase) % cols.length]
-      }
+      const phase = Math.floor(age / 160) % 4
+      ctx.globalCompositeOperation = 'screen'
+      if (phase === 2) { ctx.globalAlpha = 0.08 }
+      else if (phase === 3) { ctx.globalAlpha = 0.35 }
+      else { ctx.globalAlpha = 0.6 }
+      ctx.fillStyle = cols[(Math.floor(t.seed * 10) + phase) % cols.length]
       const y = gridH * 0.5
       let x = 0
       if (t.mode === 0) { x = ((age * 0.25) % unitW) - unitW }
       else if (t.mode === 1) { x = -((age * 0.25) % unitW) - unitW }
-      else { x = -((Math.floor(age / 140) * 37) % unitW) }
+      else { x = -((Math.floor(age / 160) * 37) % unitW) }
       ctx.fillText(full, x, y)
       ctx.fillText(full, x + fullW, y)
       ctx.globalAlpha = 1
+      ctx.globalCompositeOperation = 'source-over'
     }
     if (this.bigTextMode) {
       const size = Math.floor(gridH * 0.08)
@@ -498,7 +495,6 @@ function Client () {
   this.drawInterface = () => {
     const ctx = this.context
     const tile = this.tile
-    // Terminale inchiodato al fondo: esattamente 2 righe, senza padding extra
     const termHeightPx = tile.hs * 2
     const termY = this.el.height - termHeightPx
 
