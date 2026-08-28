@@ -53,15 +53,14 @@ function Commander (client) {
       client.cursor.scaleTo(0, 0)
     },
     write: (p) => { client.orca.writeBlock(p._x || client.cursor.x, p._y || client.cursor.y, p._str) },
-    fx: (p) => {
+       fx: (p) => {
       if (!p.str || p.str.trim().length === 0) { client.fxManager.setChain([]); return }
-      const names = ['datamosh', 'glitch', 'displace', 'fracture', 'brokentv']
       const chain = []
       const parts = p.str.split('+')
       for (let i = 0; i < parts.length; i++) {
         const seg = parts[i].trim().split('.')
         const name = (seg[0] || '').toLowerCase()
-        if (names.indexOf(name) < 0) { continue }
+        if (!name) { continue }
         chain.push({ name: name, seed: seg[1] ? parseFloat(seg[1]) : 333, drive: seg[2] ? parseFloat(seg[2]) : 500 })
       }
       client.fxManager.setChain(chain)

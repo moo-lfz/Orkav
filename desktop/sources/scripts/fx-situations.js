@@ -1,73 +1,257 @@
 'use strict'
 
-function FxSituations (client, audioReactor) {
-  this.client = client
-  this.audio = audioReactor
+function GLEngine () {
+  this.canvas = document.createElement('canvas')
+  this.gl = this.canvas.getContext('webgl', { alpha: false, preserveDrawingBuffer: true, antialias: true, powerPreference: 'high-performance' })
   this.chain = []
-  this.scroll = 0
+  this.ok = !!this.gl
   this.phase = 'wave'
   this.nextSwitch = 0
   this.dropRaw = 0
-  this.dropScroll = 0
-  this.palette = ['#2e9cc3', '#ef8f7d', '#c81e4e', '#f5efe6', '#1f7fa8']
-  this.off = document.createElement('canvas')
-  this.offCtx = this.off.getContext('2d')
-  this.prev = null
+  this.seedPrev = false
+  if (!this.ok) { console.warn('GLEngine', 'WebGL non disponibile, fallback 2D'); return }
+  this.build()
+  this.loadCustomShaders()
 }
 
-FxSituations.prototype.set = function (name, seed, drive) {
-  this.setChain([{ name: name, seed: seed, drive: drive }])
+GLEngine.prototype.setChain = function (arr) {
+  this.chain = (arr || []).filter(f => this.progs[f.name]).slice(0, 2)
+  this.seedPrev = this.chain.length > 0
 }
 
-FxSituations.prototype.setChain = function (arr) {
-  const names = ['datamosh', 'glitch', 'displace', 'fracture', 'brokentv']
-  this.chain = (arr || []).filter(f => names.indexOf(f.name) >= 0).slice(0, 2)
+GLEngine.prototype.build = function () {
+  const gl = this.gl
+  this.buf = gl.createBuffer()
+  gl.bindBuffer(gl.ARRAY_BUFFER, this.buf)
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW)
+
+  this.texScene = this.makeTex()
+  this.fboOut = this.makeFBO()
+  this.fboTmp = this.makeFBO()
+  this.fboPrev = this.makeFBO()
+
+  this.VERT = 'attribute vec2 a_pos;varying vec2 v_uv;void main(){v_uv=a_pos*0.5+0.5;gl_Position=vec4(a_pos,0.,1.);}'
+
+  // HEAD: hash/vnoise/fbm/hue/warp/dropUV + rot + voronoi (Hydra-style, open source)
+  this.HEAD = 'precision highp float;varying vec2 v_uv;' +
+    'uniform sampler2D u_tex;uniform sampler2D u_prev;uniform vec2 u_res;' +
+    'uniform float u_time;uniform float u_int;uniform float u_bass;uniform float u_mid;uniform float u_high;uniform float u_vol;uniform float u_drop;uniform float u_dscroll;uniform float u_flash;uniform float u_regime;' +
+    'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}' +
+    'float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}' +
+    'float fbm(vec2 p){float v=0.;float a=.5;for(int i=0;i<3;i++){v+=a*vnoise(p);p*=2.03;a*=.5;}return v;}' +
+    'vec3 hue(vec3 c,float a){const vec3 k=vec3(.57735);float ca=cos(a),sa=sin(a);return c*ca+cross(k,c)*sa+k*dot(k,c)*(1.-ca);}' +
+    'mat2 rot(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}' +
+    'vec2 dropUV(vec2 uv){if(u_drop<.5)return uv;float y=fract(uv.y+u_dscroll);float cx=floor(uv.x*60.);float x=fract(cx/60.+floor(hash(vec2(cx,floor(y*24.)))*3.)/60.);return vec2(x,y);}' +
+    'vec2 warp(vec2 uv,float t,float amp){vec2 w=vec2(fbm(uv*3.+t),fbm(uv*3.-t))-.5;return uv+w*amp;}' +
+    'float voronoi(vec2 p,out vec2 id){vec2 i=floor(p),f=fract(p);float md=8.;id=vec2(0.);' +
+    'for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 g=vec2(float(x),float(y));' +
+    'vec2 o=vec2(hash(i+g),hash(i+g+7.7));o=.5+.5*sin(u_time*.6+6.2831*o);' +
+    'float d=length(g+o-f);if(d<md){md=d;id=i+g;}}return md;}'
+
+  const FRAGS = {
+    copy: 'void main(){gl_FragColor=texture2D(u_tex,v_uv);}',
+
+    // DATAMOSH: smear di moto a 2 direzioni + warp + hue + rgb split
+    datamosh: 'void main(){vec2 uv=dropUV(v_uv);vec4 cur=texture2D(u_tex,uv);' +
+      'vec2 w=warp(uv,u_time*.7,.1*u_int*(.4+u_bass));vec4 pr=texture2D(u_prev,w);' +
+      'float d=length(cur.rgb-pr.rgb);float m=smoothstep(.04,.4,d);' +
+      'vec3 col=mix(cur.rgb,pr.rgb,clamp(m*(.5+.6*u_vol),0.,1.));' +
+      'vec4 pr2=texture2D(u_prev,uv+vec2(0.,.01)*u_int*m);col=mix(col,pr2.rgb,m*.4);' +
+      'col=hue(col,sin(u_time*.5)*.7*u_int);' +
+      'float rs=.003+.015*u_high;' +
+      'col.r=mix(col.r,texture2D(u_tex,uv+vec2(rs,0.)).r,.6);' +
+      'col.b=mix(col.b,texture2D(u_tex,uv-vec2(rs,0.)).b,.6);' +
+      'gl_FragColor=vec4(col,1.);}',
+
+    // DISPLACE: domain warp + ridge + rotazione + tear fini + ghost (non solo onda)
+    displace: 'void main(){vec2 uv=dropUV(v_uv);float t=u_time*.5;vec2 p=uv*2.;' +
+      'vec2 q=vec2(fbm(p+t),fbm(p+vec2(5.2,1.3)-t));' +
+      'float ridge=1.-abs(2.*fbm(p*1.5+q*2.)-1.);' +
+      'vec2 r=vec2(fbm(p+q*2.+t*.7),fbm(p+q*2.+vec2(8.1,3.7)));' +
+      'float ang=(ridge-.5)*2.*u_int;vec2 off=(r-.5)*.4*u_int*(.5+u_mid);off=rot(ang*.6)*off;' +
+      'float line=step(.97,hash(vec2(floor(uv.y*200.),floor(t*8.))));' +
+      'off+=vec2(line*(hash(vec2(floor(uv.y*200.)))-.5)*.2*u_int,0.);' +
+      'vec3 col=texture2D(u_tex,clamp(uv+off,0.,1.)).rgb;' +
+      'col=mix(col,texture2D(u_tex,clamp(uv-off*.5,0.,1.)).rgb,.35);' +
+      'col=hue(col,ridge*1.6*u_int);' +
+      'gl_FragColor=vec4(col,1.);}',
+
+    // GLITCH: tear multi-scala (1px -> mezza riga) + swap + scanline + invert
+    glitch: 'void main(){vec2 uv=dropUV(v_uv);' +
+      'float tk=floor(u_time*(8.+u_regime*8.));' +
+      'float sel=hash(vec2(floor(uv.y*8.),tk*1.3));' +
+      'float rows=sel<.4?120.:(sel<.75?40.:8.);' +
+      'float bl=floor(uv.y*rows);float g=step(.5,hash(vec2(bl,tk)));' +
+      'float amp=rows>100.?.01:(rows>20.?.06:.25);' +
+      'float sh=(hash(vec2(bl,tk*1.7))-.5)*amp*2.*u_int*g;' +
+      'vec2 guv=clamp(uv+vec2(sh,0.),0.,1.);float rs=.004+.02*u_high;vec3 c;' +
+      'c.r=texture2D(u_tex,guv+vec2(rs,0.)).r;c.g=texture2D(u_tex,guv).g;c.b=texture2D(u_tex,guv-vec2(rs,0.)).b;' +
+      'if(hash(vec2(bl,tk*.5))>.8){c=c.bgr;}' +
+      'c*=.9+.1*step(.5,fract(uv.y*u_res.y*.5));' +
+      'if(u_flash>.5){c=1.-c;}' +
+      'gl_FragColor=vec4(c,1.);}',
+
+    // FRACTURE: poligoni voronoi a 2 scale, offset lineari quantizzati, edge invert
+    fracture: 'void main(){vec2 uv=dropUV(v_uv);' +
+      'vec2 id;float d1=voronoi(uv*vec2(8.,6.),id);' +
+      'vec2 id2;float d2=voronoi(uv*vec2(20.,14.)+3.7,id2);' +
+      'float h1=hash(id);float h2=hash(id2);float tk=floor(u_time*(2.+u_regime*4.));' +
+      'vec2 o1=(vec2(h1,hash(id+3.1))-.5)*step(.45,hash(id+tk))*vec2(.35,.12)*u_int*(.5+u_bass);o1=floor(o1*32.)/32.;' +
+      'vec2 o2=(vec2(h2,hash(id2+5.7))-.5)*step(.6,hash(id2+tk))*vec2(.12,.05)*u_int;o2=floor(o2*48.)/48.;' +
+      'vec3 col=texture2D(u_tex,clamp(uv+o1+o2,0.,1.)).rgb;' +
+      'float edge=smoothstep(0.,.08,abs(d1-.5));' +
+      'col=mix(col,1.-col,(1.-edge)*.6*step(.5,hash(id+9.)));' +
+      'col=floor(col*5.)/5.;col=hue(col,h1*.9);' +
+      'gl_FragColor=vec4(col,1.);}',
+
+    // BROKENTV: feedback max-blend + voronoi tear + rolling + static + flash
+    brokentv: 'void main(){vec2 uv=dropUV(v_uv);' +
+      'vec2 id;float d=voronoi(uv*vec2(6.,5.),id);' +
+      'float tk=floor(u_time*14.);' +
+      'float sh=(hash(vec2(floor(uv.y*24.),tk))-.5)*.4*u_int;' +
+      'vec2 off=vec2(sh,0.)+(vec2(hash(id),hash(id+3.))-.5)*.1*u_int*step(.6,hash(id+tk));' +
+      'vec2 tuv=clamp(uv+off,0.,1.);' +
+      'vec3 cur=texture2D(u_tex,tuv).rgb;vec3 pr=texture2D(u_prev,tuv+vec2(0.,.004)).rgb;' +
+      'vec3 col=max(cur,pr*(.5+.4*u_vol));' +
+      'col+=(hash(uv*u_res.y+u_time)-.5)*.18;' +
+      'float bar=smoothstep(.45,.5,abs(fract(uv.y-u_time*.15)-.5));' +
+      'col*=.85+.3*bar;' +
+      'if(u_flash>.5){col=1.-col;}' +
+      'col=hue(col,sin(u_time*.7)*.4);' +
+      'gl_FragColor=vec4(col,1.);}'
+  }
+
+  this.progs = {}
+  for (const name in FRAGS) {
+    this.progs[name] = this.linkProgram(this.VERT, this.HEAD + FRAGS[name], name)
+  }
 }
 
-function vnoise (x, y) {
-  const xi = Math.floor(x); const yi = Math.floor(y)
-  const xf = x - xi; const yf = y - yi
-  const h = (a, b) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s) }
-  const u = xf * xf * (3 - 2 * xf); const v = yf * yf * (3 - 2 * yf)
-  return h(xi, yi) * (1 - u) * (1 - v) + h(xi + 1, yi) * u * (1 - v) + h(xi, yi + 1) * (1 - u) * v + h(xi + 1, yi + 1) * u * v
-}
-function hcol (n, pal) {
-  return pal[Math.floor((((n % 1) + 1) % 1) * pal.length)]
-}
-
-FxSituations.prototype.getBeatTime = function () {
-  const bpm = this.client.clock.speed.value || 120
-  return (this.client.orca.f || 0) * (60 / bpm) / 4
-}
-
-FxSituations.prototype.drawCell = function (x, y, glyph, theme) {
-  const ctx = this.client.context
-  const ws = this.client.tile.ws
-  const hs = this.client.tile.hs
-  if (theme.bg) { ctx.fillStyle = theme.bg; ctx.fillRect(x * ws, y * hs, ws, hs) }
-  if (theme.fg && glyph !== ' ') { ctx.fillStyle = theme.fg; ctx.fillText(glyph, (x + 0.5) * ws, (y + 1) * hs) }
+GLEngine.prototype.linkProgram = function (vertSrc, fragSrc, name) {
+  const gl = this.gl
+  const vs = gl.createShader(gl.VERTEX_SHADER)
+  gl.shaderSource(vs, vertSrc)
+  gl.compileShader(vs)
+  const fs = gl.createShader(gl.FRAGMENT_SHADER)
+  gl.shaderSource(fs, fragSrc)
+  gl.compileShader(fs)
+  if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
+    console.warn('GLEngine', 'shader fail:', name, gl.getShaderInfoLog(fs))
+    return null
+  }
+  const p = gl.createProgram()
+  gl.attachShader(p, vs)
+  gl.attachShader(p, fs)
+  gl.linkProgram(p)
+  return p
 }
 
-FxSituations.prototype.postProcess = function () {
-  if (!this.chain.length) { return }
-  const c = this.client
-  const ctx = c.context
-  const W = c.el.width
-  const H = c.el.height
-  const termH = (c.tile.hs * 2) + 20
-  const gridH = H - termH
-  if (gridH <= 0 || W <= 0) { return }
+GLEngine.prototype.shadersDir = function () {
+  try {
+    const path = require('path')
+    const base = require('electron').remote.app.getAppPath()
+    return path.join(base, 'sources', 'shaders')
+  } catch (e) {
+    try { return require('path').join(process.cwd(), 'sources', 'shaders') } catch (e2) { return null }
+  }
+}
 
-  if (this.off.width !== W || this.off.height !== gridH) { this.off.width = W; this.off.height = gridH }
+GLEngine.prototype.loadCustomShaders = function () {
+  if (!this.ok) { return }
+  const dir = this.shadersDir()
+  if (!dir) { return }
+  const fs = require('fs')
+  const path = require('path')
+  try {
+    if (!fs.existsSync(dir)) { fs.mkdirSync(dir, { recursive: true }) }
+    const files = fs.readdirSync(dir).filter(f => /\.frag$/i.test(f))
+    for (const f of files) { this.compileCustom(path.join(dir, f)) }
+    fs.watch(dir, (evt, fname) => {
+      if (!fname || !/\.frag$/i.test(fname)) { return }
+      clearTimeout(this.watchTimer)
+      this.watchTimer = setTimeout(() => { this.compileCustom(path.join(dir, fname)) }, 300)
+    })
+    console.log('GLEngine', 'shader disponibili:', Object.keys(this.progs).join(', '))
+  } catch (e) { console.warn('GLEngine', 'cartella shader:', e.message) }
+}
 
-  const beat = this.getBeatTime()
-  const bpmN = (c.clock.speed.value || 120) / 120
-  const audio = this.audio.isActive ? this.audio : this.audio.getSimulated(beat)
-  const vol0 = Math.min(1, audio.envelope * 2)
-  const hasBroken = this.chain.some(f => f.name === 'brokentv')
+GLEngine.prototype.compileCustom = function (file) {
+  const fs = require('fs')
+  const name = file.split(/[\\/]/).pop().replace(/\.frag$/i, '')
+  let src = ''
+  try { src = fs.readFileSync(file, 'utf8') } catch (e) { return }
+  const p = this.linkProgram(this.VERT, this.HEAD + '\n' + src, name)
+  if (p) {
+    this.progs[name] = p
+    console.log('GLEngine', 'shader caricato/aggiornato:', name)
+  }
+}
 
-  // Fase wave/drop: broken tv impazzisce con cicli piu' rapidi
+GLEngine.prototype.makeTex = function () {
+  const gl = this.gl
+  const t = gl.createTexture()
+  gl.bindTexture(gl.TEXTURE_2D, t)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  return t
+}
+
+GLEngine.prototype.makeFBO = function () {
+  const gl = this.gl
+  const tex = this.makeTex()
+  const fb = gl.createFramebuffer()
+  return { tex: tex, fb: fb }
+}
+
+GLEngine.prototype.resize = function (W, H) {
+  const gl = this.gl
+  this.canvas.width = W
+  this.canvas.height = H
+  for (const f of [this.fboOut, this.fboTmp, this.fboPrev]) {
+    gl.bindTexture(gl.TEXTURE_2D, f.tex)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f.fb)
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.tex, 0)
+  }
+  gl.bindTexture(gl.TEXTURE_2D, this.texScene)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+}
+
+GLEngine.prototype.bindQuad = function (prog) {
+  const gl = this.gl
+  gl.bindBuffer(gl.ARRAY_BUFFER, this.buf)
+  const loc = gl.getAttribLocation(prog, 'a_pos')
+  gl.enableVertexAttribArray(loc)
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
+}
+
+GLEngine.prototype.render = function (scene, info) {
+  if (!this.ok || !this.chain.length) { return false }
+  const gl = this.gl
+  const W = scene.width
+  const H = scene.height
+  if (this.canvas.width !== W || this.canvas.height !== H) { this.resize(W, H) }
+
+  gl.bindTexture(gl.TEXTURE_2D, this.texScene)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, scene)
+
+  if (this.seedPrev) {
+    gl.useProgram(this.progs.copy)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboPrev.fb)
+    gl.viewport(0, 0, W, H)
+    this.bindQuad(this.progs.copy)
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, this.texScene)
+    gl.uniform1i(gl.getUniformLocation(this.progs.copy, 'u_tex'), 0)
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    this.seedPrev = false
+  }
+
   const now = performance.now()
+  const hasBroken = this.chain.some(f => f.name === 'brokentv')
   if (this.phase === 'wave' && now > this.nextSwitch) {
     this.phase = 'drop'
     this.nextSwitch = now + (hasBroken ? 900 + Math.random() * 1200 : 700 + Math.random() * 900)
@@ -75,169 +259,55 @@ FxSituations.prototype.postProcess = function () {
     this.phase = 'wave'
     this.nextSwitch = now + (hasBroken ? 1200 + Math.random() * 2000 : 3000 + Math.random() * 5000)
   }
+  let dscroll = 0
   if (this.phase === 'drop') {
-    this.dropRaw += gridH * 0.025 * (1 + vol0)
-    this.dropScroll = Math.floor(this.dropRaw / 10) * 10
-  } else {
-    this.scroll = (this.scroll + gridH * 0.015 * (0.4 + vol0 * 1.4) * bpmN) % gridH
+    this.dropRaw += 0.02 * (1 + (info.vol || 0))
+    dscroll = Math.floor(this.dropRaw * 40) / 40
   }
-  const drop = this.phase === 'drop'
+  const flash = ((info.high || 0) > 0.3 && Math.sin(info.beat * 12.7) > 0.6) ? 1 : 0
 
-  ctx.save()
-  ctx.beginPath(); ctx.rect(0, 0, W, gridH); ctx.clip()
-
-  for (let ci = 0; ci < this.chain.length; ci++) {
-    const f = this.chain[ci]
-    this.offCtx.drawImage(c.el, 0, 0, W, gridH, 0, 0, W, gridH)
-
-    const intensity = Math.max(0, Math.min(1, (f.seed || 333) / 666))
-    const drive = ((f.drive || 500) / 666) * 4.0
-    const bass = Math.min(1, audio.bass * drive)
-    const mid = Math.min(1, audio.mid * drive)
-    const high = Math.min(1, audio.high * drive)
-    const vol = Math.min(1, audio.envelope * drive)
-
-    ctx.globalCompositeOperation = 'source-over'
-    ctx.globalAlpha = 1
-    ctx.fillStyle = '#000000'
-    ctx.fillRect(0, 0, W, gridH)
-
-    const feedback = (f.name === 'datamosh' || f.name === 'glitch' || f.name === 'brokentv')
-    if (this.prev && feedback) {
-      ctx.globalAlpha = 0.45 + vol * 0.3
-      ctx.drawImage(this.prev, 0, 2 + bass * 4)
-      ctx.globalAlpha = 1
-    }
-
-    const o = { t: beat, speed: 1.2 * bpmN, curveF: 4.5, ampX: 20, ampY: 14, cols: 16, rows: 10, tear: 0, tearGate: 0.8, quant: false, roll: this.scroll, drop: drop, dropScroll: this.dropScroll, dropAmt: 0.6, tv: 0.5, name: f.name }
-    if (f.name === 'glitch') {
-      o.curveF = 1.2; o.ampY = 6; o.ampX = 60 * intensity * (1 + high); o.tear = 150 * intensity * (1 + high); o.tearGate = 0.45; o.cols = 22; o.rows = 9; o.quant = true; o.dropAmt = 1; o.tv = 0.3
-    } else if (f.name === 'displace') {
-      o.curveF = 7.5; o.ampX = 80 * intensity * (1 + mid); o.ampY = 80 * intensity * (1 + mid); o.tear = 0; o.cols = 20; o.rows = 14; o.tv = 0.15; o.dropAmt = 0.4
-    } else if (f.name === 'datamosh') {
-      o.curveF = 3; o.ampX = 50 * intensity; o.ampY = 70 * intensity * (1 + vol); o.roll = this.scroll * 2; o.dropAmt = 1; o.tv = 0.3
-    } else if (f.name === 'fracture') {
-      o.curveF = 2; o.ampX = 130 * intensity * (1 + bass); o.ampY = 45 * intensity; o.cols = 9; o.rows = 7; o.quant = true; o.tv = 0.2
-    } else if (f.name === 'brokentv') {
-      // SEGNALE PERSO: warp violento, tear continuo, inversioni
-      o.curveF = 5; o.ampX = 70 * intensity * (1 + high); o.ampY = 45 * intensity * (1 + vol); o.tear = 220 * intensity * (1 + high); o.tearGate = 0.25; o.cols = 20; o.rows = 12; o.tv = 1; o.dropAmt = 0.9
-    }
-
-    this.redrawWarped(ctx, W, gridH, o, this.chain.length)
-    this.accents(ctx, W, gridH, { intensity: intensity, high: high, bass: bass, beat: beat, tv: o.tv, drop: drop, broken: f.name === 'brokentv' }, this.chain.length)
-
-    if (feedback) {
-      if (!this.prev || this.prev.width !== W || this.prev.height !== gridH) {
-        this.prev = document.createElement('canvas'); this.prev.width = W; this.prev.height = gridH
-      }
-      this.prev.getContext('2d').drawImage(this.off, 0, 0)
-    }
+  let input = this.texScene
+  for (let i = 0; i < this.chain.length; i++) {
+    const f = this.chain[i]
+    const prog = this.progs[f.name]
+    if (!prog) { continue }
+    const target = (i === this.chain.length - 1) ? this.fboOut : this.fboTmp
+    gl.useProgram(prog)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fb)
+    gl.viewport(0, 0, W, H)
+    this.bindQuad(prog)
+    gl.activeTexture(gl.TEXTURE0)
+    gl.bindTexture(gl.TEXTURE_2D, input)
+    gl.uniform1i(gl.getUniformLocation(prog, 'u_tex'), 0)
+    gl.activeTexture(gl.TEXTURE1)
+    gl.bindTexture(gl.TEXTURE_2D, this.fboPrev.tex)
+    gl.uniform1i(gl.getUniformLocation(prog, 'u_prev'), 1)
+    gl.uniform2f(gl.getUniformLocation(prog, 'u_res'), W, H)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_time'), info.beat)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_int'), (f.seed || 333) / 666)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_bass'), info.bass || 0)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_mid'), info.mid || 0)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_high'), info.high || 0)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_vol'), info.vol || 0)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_drop'), this.phase === 'drop' ? 1 : 0)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_dscroll'), dscroll)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_flash'), flash)
+    gl.uniform1f(gl.getUniformLocation(prog, 'u_regime'), info.regime || 0)
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+    input = target.tex
   }
 
-  ctx.restore()
-}
-
-FxSituations.prototype.redrawWarped = function (ctx, W, gridH, o, chainLen) {
-  // PERF: cap celle
-  let cols = o.cols
-  let rows = o.rows
-  if (chainLen > 1) { cols = Math.max(8, Math.floor(cols * 0.7)); rows = Math.max(6, Math.floor(rows * 0.7)) }
-  const cw = W / cols
-  const ch = gridH / rows
-  const tearT = Math.floor(o.t * 4)
-  const waveScale = o.drop ? (1 - o.dropAmt) : 1
-  for (let r = 0; r < rows; r++) {
-    const ny = r / rows
-    const rowWave = Math.sin(ny * o.curveF * 3 + o.t * o.speed * 2) + 0.5 * Math.sin(ny * o.curveF * 7 - o.t * o.speed * 2.6)
-    const gn = vnoise(ny * 20, tearT)
-    const gate = gn > o.tearGate ? (gn - o.tearGate) / (1 - o.tearGate) : 0
-    const tear = (vnoise(ny * 60, tearT * 3.7) - 0.5) * o.tear * gate
-    for (let k = 0; k < cols; k++) {
-      const nx = k / cols
-      const wx = Math.sin(ny * o.curveF * 4 + o.t * o.speed * 2 + nx * 2)
-      const wy = Math.sin(nx * o.curveF * 3 - o.t * o.speed * 1.6 + ny * 2)
-      let xoff = (rowWave * 0.6 + wx) * o.ampX * waveScale + tear
-      let yoff = wy * o.ampY * waveScale
-      yoff += o.drop ? o.dropScroll * (0.3 + ny * 0.7) * o.dropAmt : o.roll * 0.2 * (0.3 + ny)
-      if (o.drop || o.quant) {
-        xoff = Math.round(xoff / 32) * 32
-        yoff = Math.round(yoff / 12) * 12
-      }
-      let sx = k * cw + xoff
-      let sy = r * ch + yoff
-      sx = Math.max(0, Math.min(W - cw, sx))
-      sy = Math.max(0, Math.min(gridH - ch, sy))
-      ctx.drawImage(this.off, sx, sy, cw + 1, ch + 1, k * cw, r * ch, cw + 1, ch + 1)
-    }
-  }
-  if (o.drop) {
-    const n = 4 + Math.floor(o.dropAmt * 8)
-    for (let i = 0; i < n; i++) {
-      const hn = vnoise(i * 7.7, Math.floor(o.t * 8))
-      const y = Math.floor(hn * gridH)
-      const h = 2 + Math.floor(vnoise(i * 3.3, 9.1) * 5)
-      const srcW = W * (0.25 + vnoise(i * 5.1, 2.2) * 0.4)
-      const x0 = Math.floor(vnoise(i * 8.8, 4.4) * (W - srcW))
-      ctx.globalAlpha = 0.5 + o.dropAmt * 0.4
-      ctx.drawImage(this.off, x0, y, srcW, h, 0, y + Math.floor(o.dropScroll * 0.2) % 12, W, h)
-      ctx.globalCompositeOperation = 'color'
-      ctx.globalAlpha = 0.4
-      ctx.fillStyle = hcol(hn, ['#ff4fd8', '#4bff5f', '#c81e4e', '#f5efe6'])
-      ctx.fillRect(0, y, W, h)
-      ctx.globalCompositeOperation = 'source-over'
-    }
-    ctx.globalAlpha = 1
-  }
-}
-
-FxSituations.prototype.accents = function (ctx, W, gridH, a, chainLen) {
-  const perfScale = chainLen > 1 ? 0.5 : 1
-  const drips = Math.floor((14 + a.intensity * 20) * (0.5 + a.tv * 0.5) * perfScale)
-  for (let i = 0; i < drips; i++) {
-    const h1 = vnoise(i * 7.3, 1.7)
-    const x = Math.floor(h1 * W)
-    const w = 2 + Math.floor(vnoise(i * 3.1, 4.2) * 6)
-    const len = 60 + vnoise(i * 5.7, 8.8) * gridH * 0.5
-    const y = ((this.scroll * (1 + h1) + h1 * gridH) % (gridH + len)) - len
-    ctx.globalAlpha = 0.5 + a.high * 0.4
-    ctx.drawImage(this.off, x, 0, w, Math.min(len, gridH), x + (vnoise(i, Math.floor(a.beat * 2)) - 0.5) * 30 * a.intensity, y, w, Math.min(len, gridH))
-    ctx.globalCompositeOperation = 'color'
-    ctx.globalAlpha = 0.35
-    ctx.fillStyle = hcol(h1, this.palette)
-    ctx.fillRect(x, Math.max(0, y), w, Math.min(len, gridH))
-    ctx.globalCompositeOperation = 'source-over'
-  }
-  const lines = Math.floor((6 + a.high * 14) * a.tv * perfScale)
-  for (let i = 0; i < lines; i++) {
-    const hn = vnoise(i * 11.7, Math.floor(a.beat * 2) * 0.7)
-    if (hn < 0.5) { continue }
-    const y = Math.floor(hn * gridH)
-    const hgt = 1 + Math.floor(vnoise(i * 2.3, 5.5) * 3)
-    const x0 = Math.floor(vnoise(i * 9.1, 3.3) * W * 0.6)
-    const wl = W * (0.3 + vnoise(i * 4.7, 6.6) * 0.7)
-    ctx.globalAlpha = 0.35 + a.high * 0.4
-    ctx.fillStyle = hcol(vnoise(i * 13.9, 2.2), this.palette)
-    ctx.fillRect(x0, y, wl, hgt)
-  }
-  if (a.high > 0.35) {
-    const off = 6 + a.bass * 14
-    ctx.globalCompositeOperation = 'screen'
-    ctx.globalAlpha = 0.3
-    ctx.drawImage(this.off, off, 0)
-    ctx.globalCompositeOperation = 'multiply'
-    ctx.globalAlpha = 0.25
-    ctx.drawImage(this.off, -off, 0)
-    ctx.globalCompositeOperation = 'source-over'
-  }
-  // BROKEN TV: flash di inversione totale, segnale perso
-  if (a.broken && (a.high > 0.25 || a.drop)) {
-    if (vnoise(Math.floor(a.beat * 4), 7.7) > 0.6) {
-      ctx.globalCompositeOperation = 'difference'
-      ctx.globalAlpha = 0.8
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, W, gridH)
-      ctx.globalCompositeOperation = 'source-over'
-    }
-  }
-  ctx.globalAlpha = 1
+  const copy = this.progs.copy
+  gl.useProgram(copy)
+  this.bindQuad(copy)
+  gl.activeTexture(gl.TEXTURE0)
+  gl.bindTexture(gl.TEXTURE_2D, input)
+  gl.uniform1i(gl.getUniformLocation(copy, 'u_tex'), 0)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  gl.viewport(0, 0, W, H)
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboPrev.fb)
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  return true
 }
