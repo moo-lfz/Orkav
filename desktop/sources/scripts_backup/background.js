@@ -9,16 +9,13 @@ function Background (client) {
   this.autoTimer = null
   this.autoUntil = 0
   this.lastT = 0
-  this.localUsed = 0
   this.localDir = '/Users/moo/Orca/backgrounds'
-  this.tags = ['ambiente', 'politica', 'storia', 'sport', 'cultura', 'arte', 'insetti', 'tatuaggi', 'gore', 'cibo', 'sextoys', 'sacro', 'complotti', 'cartoni', 'fumetti', 'famosi', 'cantanti', 'attrici', 'concerti', 'musica', 'macchine', 'sportestremi', 'viaggi', 'soldi', 'religione']
+  this.tags = ['ambiente', 'politica', 'storia', 'sport', 'cultura', 'arte', 'insetti', 'tatuaggi', 'gore', 'cibo', 'sextoys', 'sacro', 'complotti', 'cartoni', 'fumetti', 'famosi', 'cantanti', 'attrici']
   this.commonsTags = {
     ambiente: 'nature landscape', politica: 'politics', storia: 'history', sport: 'sport',
     cultura: 'culture', arte: 'art', insetti: 'insects', tatuaggi: 'tattoo', gore: 'horror',
     cibo: 'food', sextoy: 'sex toy', sacro: 'religious ceremony', complotti: 'conspiracy',
-    cartoni: 'cartoon', fumetti: 'comic', famosi: 'celebrity', cantanti: 'singer', attrici: 'actress',
-    concerti: 'concert poster', musica: 'music poster', macchine: 'car', sportestremi: 'extreme sports',
-    viaggi: 'travel', soldi: 'money', religione: 'religion'
+    cartoni: 'cartoon', fumetti: 'comic', famosi: 'celebrity', cantanti: 'singer', attrici: 'actress'
   }
 }
 
@@ -26,11 +23,10 @@ Background.prototype.pickTag = function () {
   return this.tags[Math.floor(Math.random() * this.tags.length)]
 }
 
-Background.prototype.fetchCommons = function (tag, kind) {
+// === WIKIMEDIA COMMONS (primario) ===
+Background.prototype.fetchCommons = function (tag, wantGif) {
   const q = this.commonsTags[tag] || tag
-  let search = q
-  if (kind === 'video') { search = 'filetype:video ' + q }
-  else { search = 'filetype:bitmap ' + q }
+  const search = (wantGif ? 'filetype:video ' : 'filetype:bitmap ') + q
   const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=' + encodeURIComponent(search) + '&gsrnamespace=6&gsrlimit=12&prop=imageinfo&iiprop=url|name&iiurlwidth=900'
   fetch(url).then(r => r.json()).then(json => {
     const pages = json.query && json.query.pages
@@ -39,31 +35,24 @@ Background.prototype.fetchCommons = function (tag, kind) {
     for (const k in pages) {
       const ii = pages[k].imageinfo && pages[k].imageinfo[0]
       if (!ii) { continue }
-      const name = (ii.name || ii.url || '').toLowerCase()
-      if (kind === 'video' && /\.(mp4|ogv)$/.test(name)) { urls.push(ii.url) }
-      else if (kind === 'img' && /\.(jpg|jpeg|png)$/.test(name)) { urls.push(ii.thumburl || ii.url) }
+      if (wantGif) {
+        if (/\.gif$/i.test(ii.name || ii.url)) { urls.push(ii.url) }
+      } else {
+        if (/\.(jpg|jpeg|png)$/i.test(ii.url || '')) { urls.push(ii.thumburl || ii.url) }
+      }
     }
     if (!urls.length) { throw new Error('none') }
     const src = urls[Math.floor(Math.random() * urls.length)]
-    if (kind === 'video') { this.addVideoLayer(src) } else { this.addLayerFromUrl(src) }
-  }).catch(() => { this.fetchArchive() })
+    if (wantGif) { this.setSwarmImg(src) } else { this.addLayerFromUrl(src) }
+  }).catch(() => {
+    if (wantGif) { this.tryGiphy() } else { this.fetchArchive() }
+  })
 }
 
-// FIX GIF: API allimages con mime image/gif, random. Affidabile.
-Background.prototype.fetchCommonsGif = function () {
-  const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&list=allimages&aimime=image/gif&ailimit=30&aisort=random&aiprop=url|size'
-  fetch(url).then(r => r.json()).then(json => {
-    const imgs = json.query && json.query.allimages
-    if (!imgs || !imgs.length) { throw new Error('none') }
-    const cands = imgs.filter(i => i.width > 200 && i.width < 1200 && /\.gif$/i.test(i.url))
-    if (!cands.length) { throw new Error('none') }
-    this.setSwarmImg(cands[Math.floor(Math.random() * cands.length)].url)
-  }).catch(() => { this.tryGiphy() })
-}
-
+// === ARCHIVE.ORG (secondario, tag in inglese) ===
 Background.prototype.fetchArchive = function () {
   const tag = this.commonsTags[this.pickTag()] || 'history'
-  const wantVideo = Math.random() > 0.6
+  const wantVideo = Math.random() > 0.75
   const mt = wantVideo ? 'movies' : 'image'
   const q = encodeURIComponent(`subject:(${tag}) AND mediatype:(${mt})`)
   fetch(`https://archive.org/advancedsearch.php?q=${q}&fl[]=identifier&rows=50&page=1&output=json`)
@@ -77,82 +66,49 @@ Background.prototype.fetchArchive = function () {
         const vids = files.filter(f => /\.(mp4|ogv)$/.test(f.name))
         const imgs = files.filter(f => /\.(jpg|jpeg|png)$/.test(f.name))
         if (wantVideo && vids.length) {
-          this.addVideoLayer('https://archive.org/download/' + id + '/' + encodeURIComponent(vids[Math.floor(Math.random() * vids.length)].name))
+          const f = vids[Math.floor(Math.random() * vids.length)]
+          this.setVideo('https://archive.org/download/' + id + '/' + encodeURIComponent(f.name))
         } else if (imgs.length) {
-          this.addLayerFromUrl('https://archive.org/download/' + id + '/' + encodeURIComponent(imgs[Math.floor(Math.random() * imgs.length)].name))
+          const f = imgs[Math.floor(Math.random() * imgs.length)]
+          this.addLayerFromUrl('https://archive.org/download/' + id + '/' + encodeURIComponent(f.name))
         } else { throw new Error('no files') }
       })
     })
-    .catch(() => { this.addLayerFromUrl('https://picsum.photos/seed/' + this.pickTag() + Math.floor(Math.random() * 1000) + '/960/720') })
+    .catch(() => { this.loadWeb() })
 }
 
-Background.prototype.loadBackground = function () {
-  let files = []
-  try {
-    const fs = require('fs')
-    const path = require('path')
-    files = fs.readdirSync(this.localDir).filter(f => /\.(png|jpe?g|gif|webp|mp4|webm|ogv)$/i.test(f))
-  } catch (e) {}
-  if (files.length && this.localUsed < 3) {
-    this.localUsed++
-    const n = Math.min(files.length, 1 + Math.floor(Math.random() * 3))
-    for (let i = 0; i < n; i++) {
-      const f = files[Math.floor(Math.random() * files.length)]
-      const url = 'file://' + require('path').join(this.localDir, f)
-      if (/\.(mp4|webm|ogv)$/i.test(f)) { this.addVideoLayer(url) } else { this.addLocalImg(url) }
-    }
-    return
-  }
-  const n = Math.random() < 0.5 ? 1 : 1 + Math.floor(Math.random() * 7)
-  for (let i = 0; i < n; i++) {
-    const r = Math.random()
-    if (r < 0.45) { this.fetchCommons(this.pickTag(), 'img') }
-    else if (r < 0.75) { this.fetchCommons(this.pickTag(), 'video') }
-    else { this.fetchArchive() }
-  }
-}
-
-Background.prototype.addLocalImg = function (url) {
-  const img = new Image()
-  img.onload = () => { this.addLayer(img) }
-  img.src = url
+Background.prototype.loadWeb = function () {
+  const seed = this.pickTag() + Math.floor(Math.random() * 1000)
+  this.addLayerFromUrl('https://picsum.photos/seed/' + seed + '/960/720')
 }
 
 Background.prototype.addLayerFromUrl = function (src) {
   const img = new Image()
   img.crossOrigin = 'anonymous'
   img.onload = () => { this.addLayer(img) }
-  img.onerror = () => { this.fetchArchive() }
+  img.onerror = () => { this.loadWeb() }
   img.src = src
 }
 
-Background.prototype.addVideoLayer = function (url) {
-  const v = document.createElement('video')
-  v.muted = true; v.loop = true; v.playsInline = true
-  if (/^https?:/.test(url)) { v.crossOrigin = 'anonymous' }
-  v.onloadedmetadata = () => {
-    const W = this.client.el.width
-    const H = this.client.el.height
-    if (!v.videoHeight) { return }
-    const scale = (0.25 + Math.random() * 0.45) * H / v.videoHeight
-    this.layers.push({ type: 'video', img: v, x: Math.random() * W, y: Math.random() * H, w: v.videoWidth * scale, h: v.videoHeight * scale, vx: (Math.random() > 0.5 ? 1 : -1) * (90 + Math.random() * 180), vy: (Math.random() - 0.5) * 70, jx: 0, jy: 0, flick: 0 })
-    while (this.layers.length > 7) { const old = this.layers.shift(); if (old.type === 'video') { old.img.pause() } }
-    this.mode = 'layers'
-    v.play().catch(() => {})
+Background.prototype.loadBackground = function () {
+  try {
+    const fs = require('fs')
+    const path = require('path')
+    const files = fs.readdirSync(this.localDir).filter(f => /\.(png|jpe?g|gif|webp|mp4|webm|ogv)$/i.test(f))
+    if (files.length) {
+      const f = files[Math.floor(Math.random() * files.length)]
+      const url = 'file://' + path.join(this.localDir, f)
+      if (/\.(mp4|webm|ogv)$/i.test(f)) { this.setVideo(url); return }
+      const img = new Image()
+      img.onload = () => { this.addLayer(img) }
+      img.src = url
+      return
+    }
+  } catch (e) {}
+  const n = Math.random() < 0.5 ? 1 : 1 + Math.floor(Math.random() * 7)
+  for (let i = 0; i < n; i++) {
+    if (Math.random() < 0.7) { this.fetchCommons(this.pickTag(), false) } else { this.fetchArchive() }
   }
-  v.onerror = () => { this.fetchArchive() }
-  v.src = url
-}
-
-Background.prototype.addLayer = function (img) {
-  if (!img.naturalWidth) { return }
-  const W = this.client.el.width
-  const H = this.client.el.height
-  const scale = (0.25 + Math.random() * 0.45) * H / img.naturalHeight
-  this.layers.push({ type: 'img', img: img, x: Math.random() * W, y: Math.random() * H, w: img.naturalWidth * scale, h: img.naturalHeight * scale, vx: (Math.random() > 0.5 ? 1 : -1) * (90 + Math.random() * 180), vy: (Math.random() - 0.5) * 70, jx: 0, jy: 0, flick: 0 })
-  while (this.layers.length > 7) { const old = this.layers.shift(); if (old.type === 'video') { old.img.pause() } }
-  this.mode = 'layers'
-  if (this.video) { this.video.pause() }
 }
 
 Background.prototype.startAuto = function () {
@@ -172,7 +128,9 @@ Background.prototype.stopAuto = function () {
 Background.prototype.setVideo = function (url) {
   if (!this.video) {
     this.video = document.createElement('video')
-    this.video.muted = true; this.video.loop = true; this.video.playsInline = true
+    this.video.muted = true
+    this.video.loop = true
+    this.video.playsInline = true
   }
   if (/^https?:/.test(url)) { this.video.crossOrigin = 'anonymous' }
   this.video.src = url
@@ -181,21 +139,44 @@ Background.prototype.setVideo = function (url) {
   this.layers = []
 }
 
+Background.prototype.addLayer = function (img) {
+  if (!img.naturalWidth) { return }
+  const W = this.client.el.width
+  const H = this.client.el.height
+  const scale = (0.25 + Math.random() * 0.45) * H / img.naturalHeight
+  this.layers.push({
+    img: img,
+    x: Math.random() * W,
+    y: Math.random() * H,
+    w: img.naturalWidth * scale,
+    h: img.naturalHeight * scale,
+    vx: (Math.random() > 0.5 ? 1 : -1) * (90 + Math.random() * 180),
+    vy: (Math.random() - 0.5) * 70,
+    jx: 0, jy: 0, flick: 0
+  })
+  while (this.layers.length > 7) { this.layers.shift() }
+  this.mode = 'layers'
+  if (this.video) { this.video.pause() }
+}
+
 Background.prototype.draw = function (ctx, W, H) {
   const now = performance.now()
   const dt = Math.min(0.1, (now - (this.lastT || now)) / 1000)
   this.lastT = now
+
   if (this.mode === 'video' && this.video) {
     const sw = this.video.videoWidth
     const sh = this.video.videoHeight
     if (sw && sh) {
       const scale = Math.min(W / sw, H / sh)
-      ctx.save(); ctx.globalAlpha = 0.85
+      ctx.save()
+      ctx.globalAlpha = 0.85
       ctx.drawImage(this.video, (W - sw * scale) / 2, (H - sh * scale) / 2, sw * scale, sh * scale)
       ctx.restore()
     }
     return
   }
+
   for (let i = 0; i < this.layers.length; i++) {
     const L = this.layers[i]
     L.x += L.vx * dt
@@ -207,12 +188,14 @@ Background.prototype.draw = function (ctx, W, H) {
       L.jy = (Math.random() - 0.5) * 8
       L.flick = now + 60 + Math.random() * 120
     }
-    ctx.save(); ctx.globalAlpha = 0.8
+    ctx.save()
+    ctx.globalAlpha = 0.8
     ctx.drawImage(L.img, L.x + L.jx, L.y + L.jy, L.w, L.h)
     ctx.restore()
   }
 }
 
+// === STORMO BOIDS (Alt+G) — più spaziato ===
 Background.prototype.loadSwarm = function () {
   let src = null
   try {
@@ -222,16 +205,18 @@ Background.prototype.loadSwarm = function () {
     if (gifs.length) { src = 'file://' + path.join(this.localDir, gifs[Math.floor(Math.random() * gifs.length)]) }
   } catch (e) {}
   if (src) { this.setSwarmImg(src); return }
-  this.fetchCommonsGif()
+  // Prima Commons (gif reali), poi giphy
+  this.fetchCommons(this.pickTag(), true)
 }
 
 Background.prototype.tryGiphy = function () {
   const ids = ['3o7aCTfyEawdYEfr7W', 'l0HlQ7lr2wcHs0Bte', 'xT9IgGIlGtl8Gt0QaQ', 'l0MYt5b5J1m41XQxy', '3o6Zt6MLr1vAIs9bTG']
+  const id = ids[Math.floor(Math.random() * ids.length)]
   const img = new Image()
   img.crossOrigin = 'anonymous'
   img.onload = () => { this.initSwarm(img) }
-  img.onerror = () => { this.fetchCommonsGif() }
-  img.src = 'https://media.giphy.com/media/' + ids[Math.floor(Math.random() * ids.length)] + '/giphy.gif'
+  img.onerror = () => { this.fetchCommons('cartoni', true) }
+  img.src = 'https://media.giphy.com/media/' + id + '/giphy.gif'
 }
 
 Background.prototype.setSwarmImg = function (src) {
@@ -249,7 +234,12 @@ Background.prototype.initSwarm = function (img) {
   const cx = W * (0.3 + Math.random() * 0.4)
   const cy = H * (0.3 + Math.random() * 0.4)
   for (let i = 0; i < 17; i++) {
-    boids.push({ x: cx + (Math.random() - 0.5) * 350, y: cy + (Math.random() - 0.5) * 250, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 })
+    boids.push({
+      x: cx + (Math.random() - 0.5) * 350,
+      y: cy + (Math.random() - 0.5) * 250,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4
+    })
   }
   this.swarm = { img: img, boids: boids, nextTeleport: Date.now() + 6000 + Math.random() * 8000 }
 }
@@ -272,9 +262,10 @@ Background.prototype.stepSwarm = function (W, H, bass) {
       const o = s.boids[j]
       const dx = o.x - b.x
       const dy = o.y - b.y
-      const d = Math.sqrt(dx * dx + dy * dy)
+      const d = Math.hypot(dx, dy)
       if (d < R) {
         n++
+        // Separazione forte e a largo raggio
         if (d < 90 && d > 0) { sx -= (dx / d) * (1 - d / 90); sy -= (dy / d) * (1 - d / 90) }
         ax += o.vx; ay += o.vy
         cx += o.x; cy += o.y
@@ -288,7 +279,7 @@ Background.prototype.stepSwarm = function (W, H, bass) {
     b.vy += (Math.random() - 0.5) * 0.12
     if (b.x < 60) { b.vx += 0.2 } if (b.x > W - 60) { b.vx -= 0.2 }
     if (b.y < 60) { b.vy += 0.2 } if (b.y > H - 120) { b.vy -= 0.2 }
-    const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy) || 0.001
+    const sp = Math.hypot(b.vx, b.vy) || 0.001
     const max = 4.5 + bass * 4
     const min = 1.8
     if (sp > max) { b.vx = b.vx / sp * max; b.vy = b.vy / sp * max }
@@ -307,7 +298,8 @@ Background.prototype.drawSwarm = function (ctx, W, H) {
   const th = 90
   const sc = th / img.naturalHeight
   const dw = img.naturalWidth * sc
-  ctx.save(); ctx.globalAlpha = 0.9
+  ctx.save()
+  ctx.globalAlpha = 0.9
   for (let i = 0; i < this.swarm.boids.length; i++) {
     const b = this.swarm.boids[i]
     ctx.drawImage(img, b.x - dw / 2, b.y - th / 2, dw, th)
@@ -318,7 +310,6 @@ Background.prototype.drawSwarm = function (ctx, W, H) {
 Background.prototype.off = function () {
   this.stopAuto()
   this.mode = 'none'
-  for (let i = 0; i < this.layers.length; i++) { if (this.layers[i].type === 'video') { this.layers[i].img.pause() } }
   this.layers = []
   this.swarm = null
   if (this.video) { this.video.pause() }

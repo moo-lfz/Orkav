@@ -10,6 +10,7 @@ function FxSituations (client, audioReactor) {
   this.dropRaw = 0
   this.dropScroll = 0
   this.palette = ['#2e9cc3', '#ef8f7d', '#c81e4e', '#f5efe6', '#1f7fa8']
+  this.dropPal = ['#ff4fd8', '#4bff5f', '#c81e4e', '#f5efe6']
   this.off = document.createElement('canvas')
   this.offCtx = this.off.getContext('2d')
   this.prev = null
@@ -64,16 +65,15 @@ FxSituations.prototype.postProcess = function () {
   const bpmN = (c.clock.speed.value || 120) / 120
   const audio = this.audio.isActive ? this.audio : this.audio.getSimulated(beat)
   const vol0 = Math.min(1, audio.envelope * 2)
-  const hasBroken = this.chain.some(f => f.name === 'brokentv')
 
-  // Fase wave/drop: broken tv impazzisce con cicli piu' rapidi
+  // Fase wave/drop: ogni tanto l'ondulazione si ferma e scatta il pixel dropping
   const now = performance.now()
   if (this.phase === 'wave' && now > this.nextSwitch) {
     this.phase = 'drop'
-    this.nextSwitch = now + (hasBroken ? 900 + Math.random() * 1200 : 700 + Math.random() * 900)
+    this.nextSwitch = now + 700 + Math.random() * 900
   } else if (this.phase === 'drop' && now > this.nextSwitch) {
     this.phase = 'wave'
-    this.nextSwitch = now + (hasBroken ? 1200 + Math.random() * 2000 : 3000 + Math.random() * 5000)
+    this.nextSwitch = now + 3000 + Math.random() * 5000
   }
   if (this.phase === 'drop') {
     this.dropRaw += gridH * 0.025 * (1 + vol0)
@@ -109,22 +109,22 @@ FxSituations.prototype.postProcess = function () {
       ctx.globalAlpha = 1
     }
 
-    const o = { t: beat, speed: 1.2 * bpmN, curveF: 4.5, ampX: 20, ampY: 14, cols: 16, rows: 10, tear: 0, tearGate: 0.8, quant: false, roll: this.scroll, drop: drop, dropScroll: this.dropScroll, dropAmt: 0.6, tv: 0.5, name: f.name }
-    if (f.name === 'glitch') {
-      o.curveF = 1.2; o.ampY = 6; o.ampX = 60 * intensity * (1 + high); o.tear = 150 * intensity * (1 + high); o.tearGate = 0.45; o.cols = 22; o.rows = 9; o.quant = true; o.dropAmt = 1; o.tv = 0.3
-    } else if (f.name === 'displace') {
-      o.curveF = 7.5; o.ampX = 80 * intensity * (1 + mid); o.ampY = 80 * intensity * (1 + mid); o.tear = 0; o.cols = 20; o.rows = 14; o.tv = 0.15; o.dropAmt = 0.4
-    } else if (f.name === 'datamosh') {
+    // Config DIFFERENZIATE per situazione
+    const o = { t: beat, speed: 1.2 * bpmN, curveF: 4.5, ampX: 20, ampY: 14, cols: 18, rows: 12, tear: 0, tearGate: 0.8, quant: false, roll: this.scroll, drop: drop, dropScroll: this.dropScroll, dropAmt: 0.6, tv: 0.5 }
+    if (f.name === 'glitch') { // NETTO: linee dure, quasi niente curve
+      o.curveF = 1.2; o.ampY = 6; o.ampX = 60 * intensity * (1 + high); o.tear = 150 * intensity * (1 + high); o.tearGate = 0.45; o.cols = 26; o.rows = 10; o.quant = true; o.dropAmt = 1; o.tv = 0.3
+    } else if (f.name === 'displace') { // CURVO: fluido, niente tearing
+      o.curveF = 7.5; o.ampX = 80 * intensity * (1 + mid); o.ampY = 80 * intensity * (1 + mid); o.tear = 0; o.cols = 24; o.rows = 18; o.tv = 0.15; o.dropAmt = 0.4
+    } else if (f.name === 'datamosh') { // PIXEL DROPPING forte
       o.curveF = 3; o.ampX = 50 * intensity; o.ampY = 70 * intensity * (1 + vol); o.roll = this.scroll * 2; o.dropAmt = 1; o.tv = 0.3
-    } else if (f.name === 'fracture') {
+    } else if (f.name === 'fracture') { // MACROBLOCCHI duri
       o.curveF = 2; o.ampX = 130 * intensity * (1 + bass); o.ampY = 45 * intensity; o.cols = 9; o.rows = 7; o.quant = true; o.tv = 0.2
-    } else if (f.name === 'brokentv') {
-      // SEGNALE PERSO: warp violento, tear continuo, inversioni
-      o.curveF = 5; o.ampX = 70 * intensity * (1 + high); o.ampY = 45 * intensity * (1 + vol); o.tear = 220 * intensity * (1 + high); o.tearGate = 0.25; o.cols = 20; o.rows = 12; o.tv = 1; o.dropAmt = 0.9
+    } else if (f.name === 'brokentv') { // Lo stato acquisito
+      o.tv = 1; o.dropAmt = 0.6
     }
 
-    this.redrawWarped(ctx, W, gridH, o, this.chain.length)
-    this.accents(ctx, W, gridH, { intensity: intensity, high: high, bass: bass, beat: beat, tv: o.tv, drop: drop, broken: f.name === 'brokentv' }, this.chain.length)
+    this.redrawWarped(ctx, W, gridH, o)
+    this.accents(ctx, W, gridH, { intensity: intensity, high: high, bass: bass, beat: beat, tv: o.tv, drop: drop })
 
     if (feedback) {
       if (!this.prev || this.prev.width !== W || this.prev.height !== gridH) {
@@ -137,23 +137,19 @@ FxSituations.prototype.postProcess = function () {
   ctx.restore()
 }
 
-FxSituations.prototype.redrawWarped = function (ctx, W, gridH, o, chainLen) {
-  // PERF: cap celle
-  let cols = o.cols
-  let rows = o.rows
-  if (chainLen > 1) { cols = Math.max(8, Math.floor(cols * 0.7)); rows = Math.max(6, Math.floor(rows * 0.7)) }
-  const cw = W / cols
-  const ch = gridH / rows
+FxSituations.prototype.redrawWarped = function (ctx, W, gridH, o) {
+  const cw = W / o.cols
+  const ch = gridH / o.rows
   const tearT = Math.floor(o.t * 4)
   const waveScale = o.drop ? (1 - o.dropAmt) : 1
-  for (let r = 0; r < rows; r++) {
-    const ny = r / rows
+  for (let r = 0; r < o.rows; r++) {
+    const ny = r / o.rows
     const rowWave = Math.sin(ny * o.curveF * 3 + o.t * o.speed * 2) + 0.5 * Math.sin(ny * o.curveF * 7 - o.t * o.speed * 2.6)
     const gn = vnoise(ny * 20, tearT)
     const gate = gn > o.tearGate ? (gn - o.tearGate) / (1 - o.tearGate) : 0
     const tear = (vnoise(ny * 60, tearT * 3.7) - 0.5) * o.tear * gate
-    for (let k = 0; k < cols; k++) {
-      const nx = k / cols
+    for (let k = 0; k < o.cols; k++) {
+      const nx = k / o.cols
       const wx = Math.sin(ny * o.curveF * 4 + o.t * o.speed * 2 + nx * 2)
       const wy = Math.sin(nx * o.curveF * 3 - o.t * o.speed * 1.6 + ny * 2)
       let xoff = (rowWave * 0.6 + wx) * o.ampX * waveScale + tear
@@ -170,6 +166,7 @@ FxSituations.prototype.redrawWarped = function (ctx, W, gridH, o, chainLen) {
       ctx.drawImage(this.off, sx, sy, cw + 1, ch + 1, k * cw, r * ch, cw + 1, ch + 1)
     }
   }
+  // Pixel dropping: strisce orizzontali stirate (pixel sort) con palette magenta/verde
   if (o.drop) {
     const n = 4 + Math.floor(o.dropAmt * 8)
     for (let i = 0; i < n; i++) {
@@ -190,9 +187,8 @@ FxSituations.prototype.redrawWarped = function (ctx, W, gridH, o, chainLen) {
   }
 }
 
-FxSituations.prototype.accents = function (ctx, W, gridH, a, chainLen) {
-  const perfScale = chainLen > 1 ? 0.5 : 1
-  const drips = Math.floor((14 + a.intensity * 20) * (0.5 + a.tv * 0.5) * perfScale)
+FxSituations.prototype.accents = function (ctx, W, gridH, a) {
+  const drips = Math.floor((14 + a.intensity * 20) * (0.5 + a.tv * 0.5))
   for (let i = 0; i < drips; i++) {
     const h1 = vnoise(i * 7.3, 1.7)
     const x = Math.floor(h1 * W)
@@ -207,7 +203,7 @@ FxSituations.prototype.accents = function (ctx, W, gridH, a, chainLen) {
     ctx.fillRect(x, Math.max(0, y), w, Math.min(len, gridH))
     ctx.globalCompositeOperation = 'source-over'
   }
-  const lines = Math.floor((6 + a.high * 14) * a.tv * perfScale)
+  const lines = Math.floor((6 + a.high * 14) * a.tv)
   for (let i = 0; i < lines; i++) {
     const hn = vnoise(i * 11.7, Math.floor(a.beat * 2) * 0.7)
     if (hn < 0.5) { continue }
@@ -228,16 +224,6 @@ FxSituations.prototype.accents = function (ctx, W, gridH, a, chainLen) {
     ctx.globalAlpha = 0.25
     ctx.drawImage(this.off, -off, 0)
     ctx.globalCompositeOperation = 'source-over'
-  }
-  // BROKEN TV: flash di inversione totale, segnale perso
-  if (a.broken && (a.high > 0.25 || a.drop)) {
-    if (vnoise(Math.floor(a.beat * 4), 7.7) > 0.6) {
-      ctx.globalCompositeOperation = 'difference'
-      ctx.globalAlpha = 0.8
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, W, gridH)
-      ctx.globalCompositeOperation = 'source-over'
-    }
   }
   ctx.globalAlpha = 1
 }

@@ -31,17 +31,9 @@ function Client () {
 
   this.fxTextMode = false
   this.fxTextBuffer = ''
-  this.bigTextMode = false
-  this.bigTextBuffer = ''
-  this.bigTexts = []
 
   this.install = (host) => {
     host.appendChild(this.el)
-    document.body.style.margin = '0'
-    document.body.style.overflow = 'hidden'
-    this.el.style.position = 'fixed'
-    this.el.style.top = '0'
-    this.el.style.left = '0'
     this.theme.install(host)
     this.theme.default = { background: '#000000', f_high: '#ffffff', f_med: '#777777', f_low: '#444444', f_inv: '#000000', b_high: '#eeeeee', b_med: '#72dec2', b_low: '#444444', b_inv: '#ffb545' }
 
@@ -85,13 +77,10 @@ function Client () {
       this.clear()
       this.clock.isPaused = false
       this.cursor.reset()
-      if (this.fxManager) { this.fxManager.setChain([]) }
+      if (this.fxManager) { this.fxManager.set('none', 0, 0) }
       if (this.background) { this.background.off() }
       this.fxTextMode = false
       this.fxTextBuffer = ''
-      this.bigTextMode = false
-      this.bigTextBuffer = ''
-      this.bigTexts = []
     })
 
     this.acels.set('Move', 'Move North', 'ArrowUp', () => { this.cursor.move(0, 1) })
@@ -132,14 +121,9 @@ function Client () {
 
     this.acels.set('View', 'Activate FX Situation', 'Alt+V', () => {
       this.fxTextMode = false
-      this.bigTextMode = false
       this.commander.isActive = false
       this.commander.query = 'fx:'
       this.cursor.ins = false
-      this.update()
-    })
-    this.acels.set('View', 'Broken TV Mode', 'Alt+T', () => {
-      this.fxManager.setChain([{ name: 'brokentv', seed: 450, drive: 500 }])
       this.update()
     })
     this.acels.set('View', 'Load GIF Swarm', 'Alt+G', () => {
@@ -150,16 +134,8 @@ function Client () {
       this.background.loadBackground()
       this.update()
     })
-    this.acels.set('View', 'Background Auto Cycle', 'Alt+Shift+B', () => {
+    this.acels.set('View', 'Background Auto Cycle (30s x 1min)', 'Alt+Shift+B', () => {
       this.background.startAuto()
-      this.update()
-    })
-    this.acels.set('View', 'Big Text Overlay', 'Alt+W', () => {
-      this.commander.isActive = false
-      this.fxTextMode = false
-      this.bigTextMode = true
-      this.bigTextBuffer = ''
-      this.cursor.ins = false
       this.update()
     })
 
@@ -174,40 +150,7 @@ function Client () {
     this.acels.install(window)
     this.acels.pipe(this.commander)
 
-    // Listener capture: intercetta SOLO le modalita attive, altrimenti lascia passare tutto ad acels
     window.addEventListener('keydown', (e) => {
-      if (this.bigTextMode) {
-        if (e.key === 'Enter') {
-          if (this.bigTextBuffer.length > 0) {
-            this.bigTexts.push({
-              text: this.bigTextBuffer.toUpperCase().slice(0, 42),
-              mode: Math.floor(Math.random() * 3),
-              born: performance.now(),
-              ttl: 4000 + Math.random() * 4000,
-              seed: Math.random()
-            })
-          }
-          this.bigTextMode = false
-          this.bigTextBuffer = ''
-          this.update()
-          e.preventDefault(); e.stopPropagation(); return
-        }
-        if (e.key === 'Escape') {
-          this.bigTextMode = false; this.bigTextBuffer = ''; this.update()
-          e.preventDefault(); e.stopPropagation(); return
-        }
-        if (e.key === 'Backspace') {
-          this.bigTextBuffer = this.bigTextBuffer.slice(0, -1); this.update()
-          e.preventDefault(); e.stopPropagation(); return
-        }
-        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-          if (this.bigTextBuffer.length < 42) { this.bigTextBuffer += e.key }
-          this.update()
-          e.preventDefault(); e.stopPropagation(); return
-        }
-        return
-      }
-
       if (this.fxTextMode) {
         if (e.key === 'Enter') {
           if (this.fxTextBuffer.length > 0) {
@@ -233,7 +176,6 @@ function Client () {
           this.fxTextBuffer += e.key; this.update()
           e.preventDefault(); e.stopPropagation(); return
         }
-        return
       }
 
       if (this.commander.query.startsWith('fx:')) {
@@ -242,7 +184,7 @@ function Client () {
           if (val.length > 0) {
             this.commander.trigger(`fx:${val}`)
           } else {
-            if (this.fxManager) { this.fxManager.setChain([]) }
+            if (this.fxManager) { this.fxManager.set('none', 0, 0) }
             this.commander.query = ''
           }
           this.commander.isActive = false
@@ -250,7 +192,7 @@ function Client () {
           e.preventDefault(); e.stopPropagation(); return
         }
         if (e.key === 'Escape') {
-          if (this.fxManager) { this.fxManager.setChain([]) }
+          if (this.fxManager) { this.fxManager.set('none', 0, 0) }
           this.commander.query = ''
           this.commander.isActive = false
           this.update()
@@ -268,7 +210,6 @@ function Client () {
           e.preventDefault(); e.stopPropagation(); return
         }
       }
-      // Se nessuna modalita e attiva: NON toccare l'evento, la digitazione va ad acels/cursor
     }, true)
   }
 
@@ -305,77 +246,24 @@ function Client () {
     this.update()
   }
 
-  // Pipeline FX a 60fps (ogni frame)
   this.update = () => {
     if (document.hidden === true) { return }
-    const fxOn = this.fxManager && this.fxManager.chain && this.fxManager.chain.length > 0
+    const fxOn = this.fxManager && this.fxManager.activeSituation !== 'none'
     if (fxOn) {
       this.context.globalCompositeOperation = 'source-over'
       this.context.fillStyle = 'rgba(0,0,0,0.10)'
       this.context.fillRect(0, 0, this.el.width, this.el.height)
-      this.ports = this.findPorts()
-      this.background.draw(this.context, this.el.width, this.el.height)
-      this.background.drawSwarm(this.context, this.el.width, this.el.height)
-      this.drawProgram()
-      this.drawBigTexts(this.context, this.el.width, this.el.height - (this.tile.hs * 2))
-      this.fxManager.postProcess()
     } else {
       this.clear()
-      this.ports = this.findPorts()
-      this.background.draw(this.context, this.el.width, this.el.height)
-      this.background.drawSwarm(this.context, this.el.width, this.el.height)
-      this.drawProgram()
-      this.drawBigTexts(this.context, this.el.width, this.el.height - (this.tile.hs * 2))
     }
+    this.ports = this.findPorts()
+
+    this.background.draw(this.context, this.el.width, this.el.height)
+    this.background.drawSwarm(this.context, this.el.width, this.el.height)
+    this.drawProgram()
+    if (this.fxManager) { this.fxManager.postProcess() }
     this.drawInterface()
     this.drawGuide()
-  }
-
-  // Scritte cubitali: quasi tutta la verticale, ripetute senza spazi,
-  // lampeggiano con fasi trasparenti (si vede attraverso) e poi si sgretolano negli FX
-  this.drawBigTexts = (ctx, W, gridH) => {
-    if (!this.bigTexts.length && !this.bigTextMode) { return }
-    const now = performance.now()
-    const cols = ['#f5efe6', '#ef8f7d', '#2e9cc3', '#c81e4e', '#ff4fd8']
-    for (let i = this.bigTexts.length - 1; i >= 0; i--) {
-      const t = this.bigTexts[i]
-      const age = now - t.born
-      if (age > t.ttl) { this.bigTexts.splice(i, 1); continue }
-      const size = Math.floor(gridH * 0.78)
-      ctx.font = `bold ${size}px input_mono_medium`
-      ctx.textBaseline = 'middle'
-      ctx.textAlign = 'left'
-      const unitW = Math.max(10, ctx.measureText(t.text).width)
-      const reps = Math.ceil(W / unitW) + 2
-      let full = ''
-      for (let r = 0; r < reps; r++) { full += t.text }
-      const fullW = unitW * (reps - 1)
-      // Fasi: colore A / colore B / trasparente (si vede attraverso) / colore C
-      const phase = Math.floor(age / 140) % 4
-      if (phase === 2) { ctx.globalAlpha = 0 } else {
-        ctx.globalAlpha = phase === 3 ? 0.55 : 0.95
-        ctx.fillStyle = cols[(Math.floor(t.seed * 10) + phase) % cols.length]
-      }
-      const y = gridH * 0.5
-      let x = 0
-      if (t.mode === 0) { x = ((age * 0.25) % unitW) - unitW }
-      else if (t.mode === 1) { x = -((age * 0.25) % unitW) - unitW }
-      else { x = -((Math.floor(age / 140) * 37) % unitW) }
-      ctx.fillText(full, x, y)
-      ctx.fillText(full, x + fullW, y)
-      ctx.globalAlpha = 1
-    }
-    if (this.bigTextMode) {
-      const size = Math.floor(gridH * 0.08)
-      ctx.font = `bold ${size}px input_mono_medium`
-      ctx.textBaseline = 'middle'
-      ctx.textAlign = 'left'
-      ctx.fillStyle = '#f5efe6'
-      ctx.fillText(`> ${this.bigTextBuffer}${now % 500 < 250 ? '_' : ''}`, 20, gridH - size)
-    }
-    ctx.font = `${this.tile.hs * 0.75}px input_mono_medium`
-    ctx.textBaseline = 'bottom'
-    ctx.textAlign = 'center'
   }
 
   this.whenOpen = (file, text) => {
@@ -498,8 +386,7 @@ function Client () {
   this.drawInterface = () => {
     const ctx = this.context
     const tile = this.tile
-    // Terminale inchiodato al fondo: esattamente 2 righe, senza padding extra
-    const termHeightPx = tile.hs * 2
+    const termHeightPx = (tile.hs * 2) + 20
     const termY = this.el.height - termHeightPx
 
     ctx.globalCompositeOperation = 'source-over'
@@ -521,9 +408,7 @@ function Client () {
     this.write(`${this.io.inspect(this.grid.w)}`, this.grid.w * 4, termRow, this.grid.w - 1)
     this.write(this.orca.f < 250 ? `< ${this.io.midi.toInputString()}` : '', this.grid.w * 5, termRow, this.grid.w * 4)
 
-    if (this.bigTextMode) {
-      this.write(`[BIG TEXT] ${this.bigTextBuffer}${this.orca.f % 2 === 0 ? '_' : ''}`, this.grid.w * 0, termRow2, this.grid.w * 6, 1)
-    } else if (this.fxTextMode) {
+    if (this.fxTextMode) {
       this.write(`[FX TEXT] ${this.fxTextBuffer}${this.orca.f % 2 === 0 ? '_' : ''}`, this.grid.w * 0, termRow2, this.grid.w * 6, 1)
     } else if (this.commander.query.startsWith('fx:')) {
       this.write(`${this.commander.query}${this.orca.f % 2 === 0 ? '_' : ''}`, this.grid.w * 0, termRow2, this.grid.w * 6, 1)
@@ -536,16 +421,6 @@ function Client () {
       this.write(`${this.clock}`, this.grid.w * 3, termRow2, this.grid.w, this.clock.isPuppet ? 3 : this.io.midi.isClock ? 11 : this.clock.isPaused ? 20 : 2)
       this.write(`${display(Object.keys(this.orca.variables).join(''), this.orca.f, this.grid.w - 1)}`, this.grid.w * 4, termRow2, this.grid.w - 1)
       this.write(this.orca.f < 250 ? `> ${this.io.midi.toOutputString()}` : '', this.grid.w * 5, termRow2, this.grid.w * 4)
-    }
-
-    if (this.fxManager.chain.length) {
-      const mods = Object.keys(this.source.cache)
-      let info = this.fxManager.chain.map(f => f.name).join('+')
-      if (mods.length) { info += ` mods:${mods.length}` }
-      const startX = this.orca.w - info.length - 1
-      if (startX > this.grid.w * 5) {
-        this.write(info, startX, termRow2, info.length + 1, 6)
-      }
     }
   }
 
@@ -561,22 +436,6 @@ function Client () {
       const y = (parseInt(id) % frame) + 2
       this.write(key, x, y, 99, 3)
       this.write(text, x + 2, y, 99, 10)
-    }
-    const cmds = [
-      ['ALT+V', 'fx prompt nome.seed.drive (+combo)'],
-      ['ALT+T', 'broken tv on'],
-      ['ALT+G', 'stormo gif boids'],
-      ['ALT+B', 'background random'],
-      ['ALT+SH+B', 'auto archive 30s x 1min'],
-      ['ALT+W', 'scritta cubitale max 42'],
-      ['ESC', 'reset tutto']
-    ]
-    const bx = this.orca.w - 46
-    for (let i = 0; i < cmds.length; i++) {
-      const y = 2 + i
-      if (y > this.orca.h - 3) { break }
-      this.write(cmds[i][0], bx, y, 10, 3)
-      this.write(cmds[i][1], bx + 9, y, 36, 10)
     }
   }
 
@@ -598,6 +457,7 @@ function Client () {
     }
   }
 
+  // TUTTO LO SCHERMO: canvas = finestra esatta, griglia ceil per coprire i bordi
   this.resize = () => {
     const W = window.innerWidth
     const H = window.innerHeight
@@ -633,7 +493,6 @@ function Client () {
     this.context.textBaseline = 'bottom'
     this.context.textAlign = 'center'
     this.context.font = `${this.tile.hs * 0.75}px input_mono_medium`
-    this.context.imageSmoothingEnabled = false
 
     this.update()
   }

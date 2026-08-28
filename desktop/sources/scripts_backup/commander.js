@@ -55,7 +55,7 @@ function Commander (client) {
     write: (p) => { client.orca.writeBlock(p._x || client.cursor.x, p._y || client.cursor.y, p._str) },
     fx: (p) => {
       if (!p.str || p.str.trim().length === 0) { client.fxManager.setChain([]); return }
-      const names = ['datamosh', 'glitch', 'displace', 'fracture', 'brokentv']
+      const names = ['datamosh', 'glitch', 'displace', 'fracture', 'brokentv' ]
       const chain = []
       const parts = p.str.split('+')
       for (let i = 0; i < parts.length; i++) {
