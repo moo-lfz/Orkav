@@ -44,7 +44,7 @@
     "@ktamas77/abletonlink": "^1.2.3",
     "electron-squirrel-startup": "^1.0.1",
     "node-osc": "^4.1.9",
-    "systeminformation": "^5.33.5"
+    "systeminformation": "^5.33.6"
   },
   "standard": {
     "globals": [

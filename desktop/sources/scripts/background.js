@@ -69,8 +69,7 @@ Background.prototype.httpGet = function (url, cb, eb, redirects) {
 Background.prototype.fetchText = function (url, cb, eb) { this.httpGet(url, (b) => cb(b.toString('utf8')), eb) }
 Background.prototype.fetchJSON = function (url, cb, eb) { this.fetchText(url, (t) => { try { cb(JSON.parse(t)) } catch (e) { eb() } }, eb) }
 Background.prototype.loadSwarm = function () {
-  // auto-rotate: il stormo cambia gif da solo
-  if (!this.swarmAuto) { this.swarmAuto = setInterval(() => { this.loadSwarm() }, 6000) }
+  if (!this.swarmAuto) { this.swarmAuto = setInterval(() => { this.loadSwarm() }, 8000) }
   let src = null
   try {
     const fs = require('fs'); const path = require('path')
@@ -85,7 +84,12 @@ Background.prototype.tryNextGifSource = function () {
   const en = this.commonsTags[this.pickTagKey()]
   const enTag = Array.isArray(en) ? en[0] : (en || 'art')
   const sources = ['giphy', 'reddit', 'imgur', 'gifbin']
-  if (this.gifSourceIndex >= sources.length) { this.gifSourceIndex = 0; return }
+  if (this.gifSourceIndex >= sources.length) {
+    console.warn('Swarm', 'rete non disponibile: uso frame procedurali')
+    this.gifSourceIndex = 0
+    this.initSwarmFrames(this.makeProceduralFrames())
+    return
+  }
   const s = sources[this.gifSourceIndex++]
   if (s === 'giphy') { this.fetchGiphy(enTag) }
   else if (s === 'reddit') { this.fetchReddit(enTag) }
@@ -96,11 +100,21 @@ Background.prototype.fetchGiphy = function (q) {
   const url = 'https://api.giphy.com/v1/gifs/search?api_key=' + this.giphyKey + '&q=' + encodeURIComponent(q) + '&limit=25&rating=r'
   this.fetchJSON(url, (json) => {
     const gifs = json.data
+    if (!gifs || !gifs.length) { this.fetchGiphyTrending(); return }
+    const g = gifs[Math.floor(Math.random() * gifs.length)]
+    const src = (g.images && (g.images.fixed_height_small || g.images.downsized || g.images.original) || {}).url
+    if (src) { this.useGifUrl(src) } else { this.fetchGiphyTrending() }
+  }, () => this.fetchGiphyTrending())
+}
+Background.prototype.fetchGiphyTrending = function () {
+  const url = 'https://api.giphy.com/v1/gifs/trending?api_key=' + this.giphyKey + '&limit=25&rating=r'
+  this.fetchJSON(url, (json) => {
+    const gifs = json.data
     if (!gifs || !gifs.length) { this.tryNextGifSource(); return }
     const g = gifs[Math.floor(Math.random() * gifs.length)]
     const src = (g.images && (g.images.fixed_height_small || g.images.downsized || g.images.original) || {}).url
     if (src) { this.useGifUrl(src) } else { this.tryNextGifSource() }
-  }, () => this.tryNextGifSource())
+  }, () => { console.warn('Swarm', 'giphy non risponde, provo altre fonti'); this.tryNextGifSource() })
 }
 Background.prototype.fetchReddit = function (q) {
   const url = 'https://www.reddit.com/search.json?q=' + encodeURIComponent(q + ' url:.gif') + '&limit=25'
@@ -129,12 +143,18 @@ Background.prototype.scrapeGifUrls = function (pageUrl, cb, eb) {
   }, eb)
 }
 Background.prototype.useGifUrl = function (url) {
-  this.httpGet(url, (buf) => { this.setSwarmData('data:image/gif;base64,' + buf.toString('base64')) }, () => { this.setSwarmData(url) })
+  this.httpGet(url, (buf) => {
+    try {
+      const g = decodeGif(new Uint8Array(buf))
+      if (g && g.frames && g.frames.length) { this.initSwarmFrames(g); return }
+    } catch (e) {}
+    this.setSwarmData('data:image/gif;base64,' + buf.toString('base64'))
+  }, () => { this.tryNextGifSource() })
 }
 Background.prototype.ensureGifHost = function () {
   if (!this.gifHost) {
     this.gifHost = document.createElement('img')
-    this.gifHost.style.cssText = 'position:fixed;left:-9999px;top:-9999px;pointer-events:none;'
+    this.gifHost.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:1;z-index:-1;pointer-events:none;'
     this.gifHost.setAttribute('aria-hidden', 'true')
     document.body.appendChild(this.gifHost)
   }
@@ -142,7 +162,7 @@ Background.prototype.ensureGifHost = function () {
 }
 Background.prototype.setSwarmData = function (src) {
   const img = this.ensureGifHost()
-  img.onload = () => { if (img.naturalWidth) { img.width = img.naturalWidth; img.height = img.naturalHeight; this.initSwarm() } }
+  img.onload = () => { if (img.naturalWidth) { this.initSwarm() } }
   img.onerror = () => { this.tryNextGifSource() }
   img.src = src
 }
@@ -152,7 +172,31 @@ Background.prototype.initSwarm = function () {
   const boids = []
   const cx = W * (0.3 + Math.random() * 0.4); const cy = H * (0.3 + Math.random() * 0.4)
   for (let i = 0; i < 17; i++) { boids.push({ x: cx + (Math.random() - 0.5) * 350, y: cy + (Math.random() - 0.5) * 250, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 }) }
-  this.swarm = { img: img, boids: boids, nextTeleport: Date.now() + 6000 + Math.random() * 8000 }
+  this.swarm = { img: img, boids: boids, start: performance.now(), nextTeleport: Date.now() + 6000 + Math.random() * 8000 }
+}
+Background.prototype.initSwarmFrames = function (g) {
+  const W = this.client.el.width; const H = this.client.el.height
+  const boids = []
+  const cx = W * (0.3 + Math.random() * 0.4); const cy = H * (0.3 + Math.random() * 0.4)
+  for (let i = 0; i < 17; i++) { boids.push({ x: cx + (Math.random() - 0.5) * 350, y: cy + (Math.random() - 0.5) * 250, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 }) }
+  this.swarm = { frames: g.frames, width: g.width, height: g.height, boids: boids, start: performance.now(), nextTeleport: Date.now() + 6000 + Math.random() * 8000 }
+}
+Background.prototype.makeProceduralFrames = function () {
+  const W = 64, H = 64, N = 10, frames = []
+  for (let f = 0; f < N; f++) {
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H
+    const cx = cv.getContext('2d')
+    const img = cx.createImageData(W, H)
+    for (let y = 0; y < H; y++) { for (let x = 0; x < W; x++) {
+      const v = Math.sin((x + f * 3) * 0.3) + Math.cos((y - f * 2) * 0.25) + Math.sin((x + y + f * 4) * 0.15)
+      const t = Math.floor(((v + 3) / 6) * 255)
+      const o = (y * W + x) * 4
+      img.data[o] = t; img.data[o + 1] = 80 + (t >> 1); img.data[o + 2] = 255 - t; img.data[o + 3] = 255
+    } }
+    cx.putImageData(img, 0, 0)
+    frames.push({ canvas: cv, delay: 80 })
+  }
+  return { width: W, height: H, frames: frames }
 }
 Background.prototype.stepSwarm = function (W, H, bass) {
   const s = this.swarm; const now = Date.now()
@@ -183,13 +227,21 @@ Background.prototype.stepSwarm = function (W, H, bass) {
 }
 Background.prototype.drawSwarm = function (ctx, W, H) {
   if (!this.swarm) { return }
-  const img = this.swarm.img
-  if (!img.naturalWidth) { return }
+  const s = this.swarm
   const bass = this.client.audioReactor ? (this.client.audioReactor.bass || 0) : 0
   this.stepSwarm(W, H, bass)
-  const th = 90; const sc = th / img.naturalHeight; const dw = img.naturalWidth * sc
+  let img = null, nw = 0, nh = 0
+  if (s.frames) {
+    let total = 0; for (const f of s.frames) { total += f.delay }
+    const t = (performance.now() - s.start) % total
+    let acc = 0, idx = 0
+    for (let i = 0; i < s.frames.length; i++) { acc += s.frames[i].delay; if (t < acc) { idx = i; break } }
+    img = s.frames[idx].canvas; nw = s.width; nh = s.height
+  } else { img = s.img; nw = img.naturalWidth; nh = img.naturalHeight }
+  if (!img || !nw || !nh) { return }
+  const th = 90; const sc = th / nh; const dw = nw * sc
   ctx.save(); ctx.globalAlpha = 0.9
-  for (let i = 0; i < this.swarm.boids.length; i++) { const b = this.swarm.boids[i]; ctx.drawImage(img, b.x - dw / 2, b.y - th / 2, dw, th) }
+  for (let i = 0; i < s.boids.length; i++) { const b = s.boids[i]; ctx.drawImage(img, b.x - dw / 2, b.y - th / 2, dw, th) }
   ctx.restore()
 }
 Background.prototype.fetchCommons = function (tag, kind) {

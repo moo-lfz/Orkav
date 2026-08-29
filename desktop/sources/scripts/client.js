@@ -34,6 +34,8 @@ function Client () {
   this.params = { p0:0,p1:0,p2:0,p3:0,p4:0,p5:0,p6:0,p7:0 }
   this.midiNote = 0; this.midiCC = {}
   this.fps = 60; this.lastFrame = 0; this.frameCount = 0
+  this.q = 0.7; this.lastRender = 0; this.gpuLoad = null
+  this.fpsTarget = 30
   this.freqArr = null; this.timeArr = null; this.specPeak = null
   this.si = null; this.telemetry = { cpu:0, gpu:0, temp:null, net:null }
 
@@ -125,6 +127,14 @@ function Client () {
     this.acels.pipe(this.commander)
 
     window.addEventListener('keydown',(e)=>{
+      if(e.altKey&&!e.ctrlKey&&!e.metaKey){
+        const c=e.code
+        if(c==='KeyV'){this.fxTextMode=false;this.bigTextMode=false;this.commander.isActive=false;this.commander.query='fx:';this.cursor.ins=false;this.update();e.preventDefault();e.stopPropagation();return}
+        if(c==='KeyT'){this.fxManager.setChain([{name:'brokentv',seed:450,drive:500}]);this.update();e.preventDefault();e.stopPropagation();return}
+        if(c==='KeyG'){this.background.loadSwarm();this.update();e.preventDefault();e.stopPropagation();return}
+        if(c==='KeyB'){if(e.shiftKey){this.background.startAuto()}else{this.background.loadBackground()}this.update();e.preventDefault();e.stopPropagation();return}
+        if(c==='KeyW'){this.commander.isActive=false;this.fxTextMode=false;this.bigTextMode=true;this.bigTextBuffer='';this.cursor.ins=false;this.update();e.preventDefault();e.stopPropagation();return}
+      }
       if(this.bigTextMode){
         if(e.key==='Enter'){this.runEnter();e.preventDefault();e.stopPropagation();return}
         if(e.key==='Escape'){this.bigTextMode=false;this.bigTextBuffer='';this.update();e.preventDefault();e.stopPropagation();return}
@@ -155,7 +165,6 @@ function Client () {
     this.clock.start(); this.cursor.start()
     this.reset(); this.modZoom(); this.update()
     this.el.className='ready'; this.toggleGuide()
-    // MIDI in sola lettura per i parametri
     if(navigator.requestMIDIAccess){
       navigator.requestMIDIAccess({sysex:false}).then((acc)=>{
         const hook=(inp)=>{inp.onmidimessage=(m)=>this.onMidi(m)}
@@ -163,16 +172,19 @@ function Client () {
         acc.onstatechange=(e)=>{if(e.port.type==='input'&&e.port.state==='connected'){hook(e.port)}}
       }).catch(()=>{})
     }
-    // Telemetria nativa (systeminformation) con fallback
     try{
       const si=require('systeminformation'); this.si=si
+      let busy=false, slow=0
       const poll=()=>{
+        if(busy){return}
+        busy=true; slow++
         si.currentLoad().then(l=>{this.telemetry.cpu=l.currentLoad/100}).catch(()=>{})
-        si.cpuTemperature().then(t=>{this.telemetry.temp=t.main}).catch(()=>{})
-        si.graphics().then(g=>{const u=g.controllers&&g.controllers[0]&&g.controllers[0].utilizationGpu;if(u!=null){this.telemetry.gpu=u/100}}).catch(()=>{})
         si.networkStats().then(n=>{const s=n&&n[0];if(s){this.telemetry.net=(s.rx_sec+s.tx_sec)/125000}}).catch(()=>{})
+        if(slow%2===0){si.cpuTemperature().then(t=>{this.telemetry.temp=t.main}).catch(()=>{})}
+        if(slow%3===0){si.graphics().then(g=>{const u=g.controllers&&g.controllers[0]&&g.controllers[0].utilizationGpu;if(u!=null){this.telemetry.gpu=u/100}}).catch(()=>{})}
+        setTimeout(()=>{busy=false},250)
       }
-      poll(); setInterval(poll,800)
+      poll(); setInterval(poll,3000)
     }catch(e){ this.si=null }
   }
 
@@ -205,36 +217,39 @@ function Client () {
   this.getBeatTime = function(){const bpm=this.clock.speed.value||120;return (this.orca.f||0)*(60/bpm)/4}
 
   this.update = () => {
-    if(document.hidden===true){return}
+    const now = performance.now()
+    const bpm = this.clock.speed.value || 120
+    const regime = bpm > 600 ? 2 : (bpm > 200 ? 1 : 0)
+    const fxOn = this.fxManager && this.fxManager.ok && this.fxManager.chain && this.fxManager.chain.length > 0
+    const minInt = fxOn ? (1000 / this.fpsTarget) : 16
+    if (now - this.lastRender < minInt) { return }
+    const dt = now - (this.lastFrame || now); this.lastFrame = now; this.lastRender = now
+    this.fps = this.fps * 0.9 + (1000 / Math.max(1, dt)) * 0.1
     this.frameCount++
-    const now=performance.now(); const dt=now-(this.lastFrame||now); this.lastFrame=now
-    this.fps=this.fps*0.9+(1000/Math.max(1,dt))*0.1
-    const bpm=this.clock.speed.value||120
-    const regime=bpm>600?2:(bpm>200?1:0)
-    const beat=this.getBeatTime()
-    const a=this.audioReactor
-    this.params={p0:a.bass||0,p1:a.mid||0,p2:a.high||0,p3:a.vol||0,p4:beat%1,p5:(beat/4)%1,p6:bpm/999,p7:this.midiNote||0}
-    const fxOn=this.fxManager&&this.fxManager.ok&&this.fxManager.chain&&this.fxManager.chain.length>0
+    const beat = this.getBeatTime()
+    const a = this.audioReactor
+    this.params = { p0: a.bass || 0, p1: a.mid || 0, p2: a.high || 0, p3: a.vol || 0, p4: beat % 1, p5: (beat / 4) % 1, p6: bpm / 999, p7: this.midiNote || 0 }
+    const t0 = performance.now()
     this.clear()
-    this.sceneCtx.clearRect(0,0,this.sceneEl.width,this.sceneEl.height)
-    const savedCtx=this.context; this.context=this.sceneCtx
-    this.ports=this.findPorts()
-    this.background.draw(this.context,this.sceneEl.width,this.sceneEl.height)
-    this.background.drawSwarm(this.context,this.sceneEl.width,this.sceneEl.height)
+    this.sceneCtx.clearRect(0, 0, this.sceneEl.width, this.sceneEl.height)
+    const savedCtx = this.context; this.context = this.sceneCtx
+    this.ports = this.findPorts()
+    this.background.draw(this.context, this.sceneEl.width, this.sceneEl.height)
+    this.background.drawSwarm(this.context, this.sceneEl.width, this.sceneEl.height)
     this.drawProgram()
-    this.drawBigTexts(this.context,this.sceneEl.width,this.sceneEl.height)
-    this.context=savedCtx
-    if(fxOn){
-      const skip=(regime===2&&(this.frameCount%2===1))
-      if(!skip){
-        const info={beat:beat,regime:regime,bass:a.bass,mid:a.mid,high:a.high,vol:a.envelope,p0:this.params.p0,p1:this.params.p1,p2:this.params.p2,p3:this.params.p3,p4:this.params.p4,p5:this.params.p5,p6:this.params.p6,p7:this.params.p7}
-        if(this.fxManager.render(this.sceneEl,info)){this.context.drawImage(this.fxManager.canvas,0,0,this.el.width,this.el.height)}else{this.context.drawImage(this.sceneEl,0,0)}
-      }else{
-        this.context.drawImage(this.fxManager.canvas,0,0,this.el.width,this.el.height)
-      }
-    }else{
-      this.context.drawImage(this.sceneEl,0,0)
+    this.drawBigTexts(this.context, this.sceneEl.width, this.sceneEl.height)
+    this.context = savedCtx
+    if (fxOn) {
+      if (this.fps < this.fpsTarget - 3) { this.q = Math.max(0.3, this.q - 0.05) }
+      else if (this.fps > this.fpsTarget + 3) { this.q = Math.min(1, this.q + 0.05) }
+      const info = { beat: beat, regime: regime, q: this.q, bass: a.bass, mid: a.mid, high: a.high, vol: a.envelope, p0: this.params.p0, p1: this.params.p1, p2: this.params.p2, p3: this.params.p3, p4: this.params.p4, p5: this.params.p5, p6: this.params.p6, p7: this.params.p7 }
+      if (this.fxManager.render(this.sceneEl, info)) { this.context.drawImage(this.fxManager.canvas, 0, 0, this.el.width, this.el.height) } else { this.context.drawImage(this.sceneEl, 0, 0) }
+    } else {
+      this.context.drawImage(this.sceneEl, 0, 0)
     }
+    const renderMs = performance.now() - t0
+    if (this.fxManager.gpuMs) { this.gpuLoad = Math.min(1, this.fxManager.gpuMs / (1000 / Math.max(1, this.fps))) }
+    else { this.gpuLoad = Math.min(1, renderMs / minInt) }
     this.drawInterface(); this.drawMonitor(); this.drawStatus(); this.drawOverlay(); this.drawGuide()
   }
 
@@ -350,6 +365,15 @@ function Client () {
     for(let x=0;x<text.length&&x<limit;x++){this.drawTermSprite(offsetX+x,offsetY,text.substr(x,1),type)}
   }
 
+  this.teleString = () => {
+    let cpu=0,gpu=0,temp=null
+    if(this.si){cpu=this.telemetry.cpu;temp=this.telemetry.temp}
+    if(this.si&&this.telemetry.gpu>0){gpu=this.telemetry.gpu}
+    else if(this.gpuLoad!=null){gpu=this.gpuLoad}
+    if(temp==null||temp<=0){temp=40+cpu*45}
+    return `C:${Math.round(cpu*100)} G:${Math.round(gpu*100)} ${Math.round(this.fps)}f ${Math.round(temp)}°`
+  }
+
   this.drawInterface = () => {
     const ctx=this.context; const tile=this.tile
     const termHeightPx=tile.hs*2; const termY=this.el.height-termHeightPx
@@ -363,6 +387,9 @@ function Client () {
     this.writeTerm(`${this.orca.f}f${this.clock.isPaused?'~':''}`,this.grid.w*3,termRow,this.grid.w,2)
     this.writeTerm(`${this.io.inspect(this.grid.w)}`,this.grid.w*4,termRow,this.grid.w-1,2)
     this.writeTerm(this.orca.f<250?`< ${this.io.midi.toInputString()}`:'',this.grid.w*5,termRow,this.grid.w*4,2)
+    const tele=this.teleString()
+    const tX=this.orca.w-tele.length-1
+    if(tX>this.grid.w*5){this.writeTerm(tele,tX,termRow,tele.length+1,1)}
     if(this.bigTextMode){this.writeTerm(`[BIG TEXT] ${this.bigTextBuffer}${this.orca.f%2===0?'_':''}`,this.grid.w*0,termRow2,this.grid.w*6,6)}
     else if(this.fxTextMode){this.writeTerm(`[FX TEXT] ${this.fxTextBuffer}${this.orca.f%2===0?'_':''}`,this.grid.w*0,termRow2,this.grid.w*6,6)}
     else if(this.commander.query.startsWith('fx:')){this.writeTerm(`${this.commander.query}${this.orca.f%2===0?'_':''}`,this.grid.w*0,termRow2,this.grid.w*6,6)}
@@ -388,7 +415,7 @@ function Client () {
     const ctx=this.context; const a=this.audioReactor
     if(!a||!a.analyser){return}
     const termH=this.tile.hs*2; const termY=this.el.height-termH
-    const MW=189,MH=132; const mx=10; const my=termY-MH-10
+    const MW=189,MH=132; const mx=0; const my=termY-MH-10
     if(my<0){return}
     const bins=a.analyser.frequencyBinCount
     if(!this.freqArr||this.freqArr.length!==bins){this.freqArr=new Uint8Array(bins);this.timeArr=new Uint8Array(bins);this.specPeak=new Float32Array(bins)}
@@ -411,7 +438,7 @@ function Client () {
     for(let i=0;i<N;i++){const x=mx+4+(i/N)*(MW-8); const y=top+bh-this.specPeak[i]*bh; if(i===0){ctx.moveTo(x,y)}else{ctx.lineTo(x,y)}}
     ctx.stroke()
     const ry=my+MH-16
-    ctx.font=`${Math.floor(this.tile.hs*0.7)}px input_mono_medium`; ctx.textAlign='left'; ctx.textBaseline='bottom'
+    ctx.font=`${this.tile.hs*0.75}px input_mono_medium`; ctx.textAlign='left'; ctx.textBaseline='bottom'
     ctx.fillStyle='#4ade80'; ctx.fillText('RMS',mx+6,ry+12)
     ctx.fillStyle='#222'; ctx.fillRect(mx+36,ry,MW-36-44,10)
     ctx.fillStyle='#ffb545'; ctx.fillRect(mx+36,ry,Math.min(1,rms*2.5)*(MW-36-44),10)
@@ -427,47 +454,63 @@ function Client () {
 
   this.drawStatus = () => {
     const ctx=this.context
-    let cpu,gpu,temp,net
-    if(this.si){cpu=this.telemetry.cpu;gpu=this.telemetry.gpu;temp=this.telemetry.temp;net=this.telemetry.net}
-    else{try{cpu=Math.min(1,require('os').loadavg()[0]/4)}catch(e){cpu=0} gpu=Math.min(1,(1000/Math.max(1,this.fps))/16.7);temp=null;net=null}
+    let cpu=0,temp=null,net=null
+    if(this.si){cpu=this.telemetry.cpu;temp=this.telemetry.temp;net=this.telemetry.net}
+    try{ if(!cpu){cpu=Math.min(1,require('os').loadavg()[0]/4)} }catch(e){}
+    let gpu=0, gpuKnown=false
+    if(this.si&&this.telemetry.gpu>0){gpu=this.telemetry.gpu;gpuKnown=true}
+    else if(this.gpuLoad!=null){gpu=this.gpuLoad;gpuKnown=true}
+    if(temp==null||temp<=0){temp=40+cpu*45}
     const a=this.audioReactor; const rms=a?a.vol:0; const db=20*Math.log10(rms+1e-6)
     if(net==null){try{if(navigator.connection&&navigator.connection.downlink){net=navigator.connection.downlink}}catch(e){}}
-    const items=[
-      {l:'CPU',v:cpu||0,c:'#ffb545',t:Math.round((cpu||0)*100)+'%'},
-      {l:'GPU',v:gpu||0,c:'#b39dff',t:Math.round((gpu||0)*100)+'%'},
-      {l:'FPS',v:Math.min(1,this.fps/60),c:'#4ade80',t:Math.round(this.fps)},
-      {l:'dB',v:Math.min(1,(db+60)/60),c:'#ffb545',t:Math.round(db)},
-      {l:'NET',v:net?Math.min(1,net/100):0,c:'#4ade80',t:net?net.toFixed(0)+'Mb':'--'},
-      {l:'T',v:temp!=null?Math.min(1,temp/100):0,c:'#b39dff',t:temp!=null?Math.round(temp)+'°':'--'}
+    const termH=this.tile.hs*2; const termY=this.el.height-termH
+    const MH=132; const monY=termY-MH-10
+    const MW=189
+    const rows=[
+      ['CPU',cpu,'#ffb545',Math.round(cpu*100)+'%'],
+      ['GPU',gpuKnown?gpu:0,'#b39dff',gpuKnown?Math.round(gpu*100)+'%':'--'],
+      ['FPS',Math.min(1,this.fps/60),'#4ade80',String(Math.round(this.fps))],
+      ['dB',Math.min(1,(db+60)/60),'#ffb545',String(Math.round(db))],
+      ['NET',net?Math.min(1,net/100):0,'#4ade80',net?net.toFixed(0)+'M':'--'],
+      ['T',Math.min(1,temp/100),'#b39dff',Math.round(temp)+'°']
     ]
-    const bw=60; let x=8
-    ctx.font=`${Math.floor(this.tile.hs*0.7)}px input_mono_medium`; ctx.textAlign='left'; ctx.textBaseline='bottom'
-    for(const it of items){
-      ctx.fillStyle=it.c; ctx.fillText(it.l,x,12)
-      ctx.fillStyle='#222'; ctx.fillRect(x+26,4,bw,6)
-      ctx.fillStyle=it.c; ctx.fillRect(x+26,4,bw*it.v,6)
-      if(it.t!==undefined){ctx.fillText(String(it.t),x+26+bw+4,12)}
-      x+=26+bw+40
+    const rh=11; const SH=rows.length*rh+6; const sy=monY-SH-6
+    ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(0,sy,MW,SH)
+    ctx.font=`${this.tile.hs*0.6}px input_mono_medium`; ctx.textAlign='left'; ctx.textBaseline='middle'
+    for(let i=0;i<rows.length;i++){
+      const r=rows[i]; const y=sy+4+i*rh
+      ctx.fillStyle=r[2]; ctx.fillText(r[0],4,y)
+      ctx.fillStyle='#222'; ctx.fillRect(30,y-2,100,4)
+      ctx.fillStyle=r[2]; ctx.fillRect(30,y-2,100*Math.max(0,Math.min(1,r[1])),4)
+      ctx.textAlign='right'; ctx.fillText(r[3],MW-4,y); ctx.textAlign='left'
     }
   }
 
   this.drawOverlay = () => {
     const ctx=this.context; const W=this.el.width; const H=this.el.height
     const P=this.params; const bpm=Math.round(this.clock.speed.value||120)
-    const anchors=[
-      {x:W*0.2+P.p4*60,y:H*0.3+P.p0*80,t:`id:0 bpm:${bpm}`},
-      {x:W*0.6+P.p5*80,y:H*0.4+P.p1*60,t:`id:1 b:${P.p4.toFixed(2)}`},
-      {x:W*0.4+P.p7*100,y:H*0.6+P.p2*70,t:`id:2 n:${Math.round(P.p7*127)}`},
-      {x:W*0.75+P.p0*50,y:H*0.25+P.p3*60,t:`id:3 v:${P.p3.toFixed(2)}`}
-    ]
+    const B=this.background
+    const targets=[]
+    if(B){
+      for(let i=0;i<B.layers.length&&targets.length<2;i++){const L=B.layers[i];targets.push({x:L.x,y:L.y,w:L.w,h:L.h,t:`id:${i} lay`})}
+      if(B.swarm){for(let i=0;i<B.swarm.boids.length&&targets.length<4;i+=6){const b=B.swarm.boids[i];targets.push({x:b.x-40,y:b.y-30,w:80,h:60,t:`id:${targets.length} gif`})}}
+    }
+    if(targets.length<4){targets.push({x:W*0.5+P.p4*80-50,y:H*0.4+P.p0*60-40,w:100,h:80,t:`id:x bpm:${bpm}`})}
     ctx.lineWidth=1
-    for(let i=0;i<anchors.length;i++){
-      const an=anchors[i]
-      ctx.strokeStyle=i%3===0?'#ffb545':(i%3===1?'#4ade80':'#b39dff')
-      ctx.strokeRect(an.x+0.5,an.y+0.5,26,14)
-      ctx.beginPath(); ctx.moveTo(an.x+26,an.y+7); ctx.lineTo(an.x+40,an.y+7); ctx.stroke()
-      ctx.font=`${Math.floor(this.tile.hs*0.6)}px input_mono_medium`; ctx.textAlign='left'; ctx.textBaseline='middle'
-      ctx.fillStyle=ctx.strokeStyle; ctx.fillText(an.t,an.x+42,an.y+8)
+    for(let i=0;i<targets.length;i++){
+      const an=targets[i]
+      const col=i%3===0?'#ffb545':(i%3===1?'#4ade80':'#b39dff')
+      ctx.strokeStyle=col
+      ctx.strokeRect(an.x+0.5,an.y+0.5,an.w,an.h)
+      const c=8
+      ctx.beginPath()
+      ctx.moveTo(an.x,an.y+c);ctx.lineTo(an.x,an.y);ctx.lineTo(an.x+c,an.y)
+      ctx.moveTo(an.x+an.w-c,an.y);ctx.lineTo(an.x+an.w,an.y);ctx.lineTo(an.x+an.w,an.y+c)
+      ctx.moveTo(an.x+an.w,an.y+an.h-c);ctx.lineTo(an.x+an.w,an.y+an.h);ctx.lineTo(an.x+an.w-c,an.y+an.h)
+      ctx.moveTo(an.x+c,an.y+an.h);ctx.lineTo(an.x,an.y+an.h);ctx.lineTo(an.x,an.y+an.h-c)
+      ctx.stroke()
+      ctx.font=`${this.tile.hs*0.7}px input_mono_medium`; ctx.textAlign='left'; ctx.textBaseline='bottom'
+      ctx.fillStyle=col; ctx.fillText(an.t,an.x+2,an.y-2)
     }
   }
 
@@ -480,7 +523,7 @@ function Client () {
       const x=(Math.floor(parseInt(id)/frame)*32)+2; const y=(parseInt(id)%frame)+2
       this.write(key,x,y,99,3); this.write(text,x+2,y,99,10)
     }
-    const cmds=[['ALT+V','fx prompt nome.seed.drive (+combo)'],['ALT+T','broken tv on'],['ALT+G','stormo gif boids'],['ALT+B','background random'],['ALT+SH+B','auto archive 30s x 1min'],['ALT+W','scritta cubitale max 42'],['ESC','reset tutto']]
+    const cmds=[['ALT+V','fx prompt nome.seed.drive (+combo)'],['ALT+T','broken tv on'],['ALT+G','stormo gif boids'],['ALT+B','background random'],['ALT+SH+B','auto archive 30s x 1min'],['ALT+W','scritta cubitale max 42'],['ESC','reset tutto'],['FPS:NN','cmd+K target fps']]
     const bx=this.orca.w-46
     for(let i=0;i<cmds.length;i++){const y=2+i; if(y>this.orca.h-3){break} this.write(cmds[i][0],bx,y,10,3); this.write(cmds[i][1],bx+9,y,36,10)}
   }
