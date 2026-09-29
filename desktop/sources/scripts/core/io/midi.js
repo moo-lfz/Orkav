@@ -37,7 +37,7 @@ function Midi (client) {
   }
 
     this.trigger = function (item, down) {
- if (!this.outputDevice() && (item.port === -1 || item.port === undefined)) { console.warn('MIDI', 'No midi output!'); return }
+    if (!this.outputDevice().length && (item.port === -1 || item.port === undefined)) { console.warn('MIDI', 'No midi output!'); return }
     const transposed = this.transpose(item.note, item.octave)
     const channel = !isNaN(item.channel) ? parseInt(item.channel) : client.orca.valueOf(item.channel)
 
@@ -47,7 +47,7 @@ function Midi (client) {
     const n = transposed.id
     const v = parseInt((item.velocity / 16) * 127)
 
-    if (!n || c === 127) { return }
+    if (n == null || c === 127) { return }
 
     // NUOVA LOGICA DI ROUTING:
     let devices = []
@@ -57,7 +57,23 @@ function Midi (client) {
       devices = this.outputDevice()
     }
 
+    if (!devices.length) { console.warn('MIDI', 'Nessun device di output selezionato. Usa mididevices e midi:<indice>'); return }
+
     devices.forEach(device => device.send([c, n, v]))
+
+    // Log diagnostico rate-limited (ogni ~2s) per verificare l'invio
+    const now = performance.now()
+    if (down === true && now - (this._lastNoteLog || 0) > 2000) {
+      this._lastNoteLog = now
+      console.log('MIDI', `nota ON  ch:${channel} note:${n} vel:${v} → ${devices.map(d => d.name).join(' + ')}`)
+    }
+
+    // Score → motore grafico: ogni nota ON generata da Orca pulsa le visual
+    // (indipendente dal framerate: flash sincronizzato con lo score)
+    if (down === true && client) {
+      client.scoreFlash = Math.min(1, (client.scoreFlash || 0) + (v / 127) * 0.6)
+      client._progDirty = true // la griglia è cambiata
+    }
   }
 
   this.press = function (item) {
@@ -102,18 +118,21 @@ function Midi (client) {
   this.ticks = []
 
   this.sendClockStart = function () {
-    if (!this.outputDevice()) { return }
-    this.isClock = true
-    this.outputDevice().forEach(device => device.send([0xFA], 0))
-    console.log('MIDI', 'MIDI Start Sent')
-  }
+  if (!this.outputDevice()) return
+  this.isClock = true
+  this.outputDevice().forEach(device => device.send([0xFA], 0))
+  console.log('MIDI', 'MIDI Start Sent')
+  // Avvia il clock MIDI
+  this.clockRunning = true
+}
 
-  this.sendClockStop = function () {
-    if (!this.outputDevice()) { return }
-    this.isClock = false
-    this.outputDevice().forEach(device => device.send([0xFC], 0))
-    console.log('MIDI', 'MIDI Stop Sent')
-  }
+this.sendClockStop = function () {
+  if (!this.outputDevice()) return
+  this.isClock = false
+  this.outputDevice().forEach(device => device.send([0xFC], 0))
+  console.log('MIDI', 'MIDI Stop Sent')
+  this.clockRunning = false
+}
 
   this.sendClock = function () {
     if (!this.outputDevice()) { return }
@@ -162,14 +181,11 @@ function Midi (client) {
     console.warn('MIDI', `Unknown device with id ${id}`); 
     return 
   }
-  const index = this.outputIndexes.indexOf(parseInt(id))
-  if (index > -1) {
-    this.outputIndexes.splice(index, 1)
-    console.log('MIDI', `Deselect Output Device: ${this.outputs[id].name}`)
-  } else {
-    this.outputIndexes.push(parseInt(id))
-    console.log('MIDI', `Select Output Device: ${this.outputs[id].name}`)
-  }
+  // Selezione ESCLUSIVA: un solo device alla volta (per hardware USB come
+  // Ableton Move / ESI MIDIMATE, mandare note a 6 porte contemporaneamente
+  // confonde l'utente e i device). midi:-1 azzera la selezione.
+  this.outputIndexes = [parseInt(id)]
+  console.log('MIDI', `Select Output Device: ${this.outputs[id].name}`)
 }
 
    
@@ -217,7 +233,8 @@ function Midi (client) {
 
   this.refresh = function () {
     if (!navigator.requestMIDIAccess) { return }
-    navigator.requestMIDIAccess().then(this.access, (err) => {
+    // sysex:false esplicito: evita il warning di permesso (Chrome milestone 82+)
+    navigator.requestMIDIAccess({ sysex: false }).then(this.access, (err) => {
       console.warn('No Midi', err)
     })
   }
@@ -228,7 +245,12 @@ function Midi (client) {
     for (let i = outputs.next(); i && !i.done; i = outputs.next()) {
       this.outputs.push(i.value)
     }
-    this.selectOutput(0)
+    // Seleziona il PRIMO device disponibile e logga TUTTI gli output, così
+    // l'utente può scegliere quello giusto (es. "Ableton Move" via USB) con
+    // il comando midi:<indice>. NON diamo priorità all'IAC: quello serve solo
+    // per il routing software (Ableton Live), non per hardware USB.
+    console.log('MIDI', 'Output disponibili:', this.outputs.map((d, i) => `[${i}] ${d.name}`).join(', '))
+    this.selectOutput(this.outputs.length ? 0 : -1)
 
     const inputs = midiAccess.inputs.values()
     this.inputs = []

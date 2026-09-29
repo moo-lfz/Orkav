@@ -1,6 +1,21 @@
-Nothing should be ignored since only source files (.js) were modified and no build artifacts, dependencies, or temp files were present in the changes.node_modules/
-.next/
+# Dipendenze
+node_modules/
+
+# Build / output
 dist/
 build/
+.next/
 *.log
-node_modules/
+
+# Backup e file temporanei LOCALI (non pubblicati)
+*.bak
+*.backup
+*.backup[0-9]*
+*.backup_*
+*.bak_*
+*.diagnostic_backup
+*~
+.DS_Store
+
+# Snapshot locali di shader
+desktop/sources/shaders_backup_*/

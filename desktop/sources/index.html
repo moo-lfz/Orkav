@@ -2,7 +2,17 @@
 <html>
   <head>
     <meta charset='utf-8'>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net; worker-src 'self' blob:; img-src 'self' data: blob: https: http: file:; connect-src 'self' https: http: blob: data: file:; style-src 'self' 'unsafe-inline'; media-src 'self' blob: https: http: file:; font-src 'self' data:;">
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
     <link rel="stylesheet" type="text/css" href="links/main.css"/>
+    <link rel="stylesheet" type="text/css" href="links/bigtext-fonts.css"/>
     <script type="text/javascript" src="scripts/lib/acels.js"></script>
     <script type="text/javascript" src="scripts/lib/theme.js"></script>
     <script type="text/javascript" src="scripts/lib/history.js"></script>
@@ -22,17 +32,15 @@
     <script type="text/javascript" src="scripts/cursor.js"></script>
     <script type="text/javascript" src="scripts/audio-reactor.js"></script>
     <script type="text/javascript" src="scripts/fx-situations.js"></script>
-           <script type="text/javascript" src="scripts/gif-decoder.js"></script>
+    <script type="text/javascript" src="scripts/gif-decoder.js"></script>
     <script type="text/javascript" src="scripts/background.js"></script>
+    <script type="text/javascript" src="scripts/face-tracker.js"></script>
+    <script type="text/javascript" src="scripts/model3d.js"></script>
     <script type="text/javascript" src="scripts/client.js"></script>
-    <title>Orca</title>
+    
+    <title>Orkav</title>
   </head>
   <body>
-    <script>
-      'use strict'
-      const client = new Client()
-      client.install(document.body)
-      window.addEventListener('load', () => { client.start(); client.acels.inject('Orca') })
-    </script>
+    <script type="text/javascript" src="scripts/boot.js"></script>
   </body>
 </html>

@@ -152,6 +152,276 @@ All commands have a shorthand equivalent to their first two characters, for exam
 - `udp:1234;5678` Set UDP output port to `1234`, and input port to `5678`.
 - `osc:1234` Set OSC output port to `1234`.
 
+---
+
+# ORKAV — Fork audiovisivo
+
+Orkav estende Orca con **FX shader audio-reattivi**, **Ableton Link**, **MIDI→visuale** (background/GIF/big text), **tag media**, **webcam + face tracking (MediaPipe)**, **modelli 3D web** e **Total Glitch / Panic Button**.
+
+## FX (commander `fx:`)
+
+Formato: **`fx:nome.rand.drive`** — esempio `fx:datamosh.400.400`
+
+| Valore | Range | Significato |
+|--------|-------|-------------|
+| `rand` | 0–999 (default 400) | randomizza **3 parametri dello shader** + riposiziona i **7 filtri spettrali** |
+| `drive` | 0–999 (default 400) | **drive dell'audio capture** (sensibilità dei 7 filtri) |
+
+- `fx:datamosh.400.400` — datamosh con seed 400, drive 400
+- `fx:glitch.200+datamosh.800` — combo (max 4 in chain)
+- `fx:` (vuoto) spegne tutto
+
+### Contratto 10 parametri shader
+
+Ogni shader ha 10 parametri controllabili:
+
+| Uniform | Contenuto |
+|---------|-----------|
+| `u_int` | seed (da `rand`) — randomizza 3 parametri via hash |
+| `u_pa.x/y/z/w` | bande audio **p0–p3** (7 filtri bandpass random sullo spettro) |
+| `u_pb.x/y/z` | bande audio **p4–p6** |
+| `u_pb.w` | **drive** audio capture (0–1) |
+| `u_time` | beat (BPM) |
+
+Più utility: `u_bass`, `u_mid`, `u_high`, `u_vol`, `u_flash` (transienti + **score MIDI**), `u_strobe`, `u_drop`, `u_prev` (feedback frame precedente), `u_tex`, `u_res`.
+
+### Shader GLEngine (`desktop/sources/shaders/*.frag`)
+
+| Shader | Shortcut | Effetto |
+|--------|----------|---------|
+| `brokentv` | `Alt+T` | TV rotta anni 90 |
+| `datamosh` | `Alt+D` | compression artifacts |
+| `glitch` | `Alt+J` | glitch digitale |
+| `ameba` | `Alt+K` | **linee verticali che slittano sull'asse orizzontale** (deriva + oscillazione + spinta audio per linea) |
+| `fractal` | `Alt+R` | Mandelbrot/Julia audio-reattivo |
+| `displace` | `Alt+S` | displacement map |
+| `chromawarp` | `Alt+N` | curvatura cromatica |
+| `fracture` | `Alt+Q` | fratture schermo |
+| `glow` | `Alt+L` | bagliore neon |
+| `freezeloop` | `Alt+F` | **congela parti dello schermo e le fa roteare in loop di pixel** (feedback via `u_prev`) |
+| `bubble` | `Alt+E` | **bolle iridescenti lucide** con rifrazione, bordo thin-film e highlight speculare |
+
+#### `freezeloop` — freeze + feedback
+Lo schermo è diviso in una griglia di blocchi. Alcuni blocchi vengono **congelati** (selezione da hash + bassi + flash) e smettono di leggere il feed live: campionano il **frame precedente** con una rotazione (`twirl`) attorno al centro del blocco e se lo rimandano indietro. Ne risulta un **loop chiuso di pixel** che gira su se stesso. Un decadimento < 1 più una minima iniezione di frame live tengono il loop stabile (non satura e non muore), e una leggera rotazione di tinta lo fa "girare" visibilmente.
+
+#### `bubble` — bolle shiny
+Un campo di bolle (celle con centri jitterati, in movimento) che **rifrangono il feed** come lenti sferiche, con **aberrrazione cromatica radiale**, **bordo iridescente thin-film** che dipende dall'angolo di incidenza, **highlight speculare** e un **alone glow** che si somma al feed. Il raggio respira coi bassi, le alte fanno scintillare i bordi.
+
+## Total Glitch & Panico
+
+- **`Alt+Shift+X`**: TOTAL GLITCH — brokentv+glitch+datamosh+fracture al massimo, distrugge **tutto** il feed visivo compresa la patch e il terminale Orca. Durante il glitch il BPM diventa **randomico 0–999 a ritmo molto veloce** (solo locale, non propagato a Link) e compare la scritta **PANICO multilingua** a rotazione (PANIC/PANICO/PANIQUE/PÁNICO/PANIK/PÂNICO/ПАНИКА/恐慌/パニック/PANIEK/PANIKA).
+- **Uscita**: solo `Esc` o di nuovo `Alt+Shift+X` (ripristina BPM, shader, patch e terminale).
+
+## Webcam · Face Tracking · Maschere
+
+- **`Alt+Z`**: attiva la webcam come feed (attiva automaticamente anche la maschera viso).
+- **`Alt+H`**: maschera emoji sul viso — 468 landmark MediaPipe FaceMesh; le emoticon **swap velocemente**, si **freezano sui bassi** (bass > 0.8) e ogni ~17 secondi; ancorata ~20px sotto il centro del viso.
+- I landmark del viso (bocca/occhi/rotazione/imbardata/beccheggio) **pilotano i parametri degli shader** (`u_face`/`u_face2`).
+
+## Modelli 3D — Poly Haven (default) · Thingiverse (opzionale)
+
+- **`Alt+P`**: carica un modello 3D seguendo il **tag corrente**.
+- **Formati**: GLB/glTF, STL, OBJ.
+- **Deformazione audio-reattiva** dei vertici (`u_disp`).
+
+### Sorgenti, in ordine di tentativo
+
+| # | Sorgente | Token | Note |
+|---|----------|-------|------|
+| 1 | **Thingiverse** | serve un token approvato | usata solo se il token è configurato |
+| 2 | **Poly Haven** | **nessuno** | 520+ modelli **CC0**, API pubblica, CORS aperto — **default** |
+| 3 | lista GLB Khronos | nessuno | fallback locale, sempre disponibile |
+
+### Poly Haven (nessuna configurazione)
+
+Funziona **subito**, senza token. I modelli sono **CC0** (dominio pubblico).
+
+- `Alt+P` → prende il **tag corrente** e carica un modello coerente
+- `ph:<query>` → cerca e carica (es. `ph:barrel`, `ph:forest`, `ph:camera`)
+- `phlist:<query>` → elenca i modelli che matchano
+
+I tag di Orkav vengono tradotti in termini Poly Haven (che è realistico: props, natura, industria) tramite una **tabella di alias** — es. `twin peaks` → forest/tree/pine, `lucifer` → lighting/lamp, `cyberdeck` → electronics/circuit, `demons` → creature/statue. Se un tag non matcha nulla viene usato un modello a caso (gli altri vanno a vuoto).
+
+### Configurare Thingiverse (opzionale, richiede un token approvato)
+
+L'API (`api.thingiverse.com`) risponde **401** senza token. Il token è gratuito ma si crea
+**solo da loggati**: la pagina `thingiverse.com/apps/create` senza login mostra soltanto "Login".
+
+1. Fai **login** su [thingiverse.com](https://www.thingiverse.com/) — senza login la pagina del token non si apre.
+2. Apri [thingiverse.com/apps/create](https://www.thingiverse.com/apps/create) → *Create an App*
+   (nome e URL qualsiasi) → copia l'**Access Token**.
+3. In Orkav apri il commander (`Cmd+K`) ed esegui:
+   - `tvtoken:<IL_TUO_TOKEN>` → salva il token (persiste in `localStorage`)
+   - `tvhelp` → ristampa queste istruzioni in console
+
+| Comando | Effetto |
+|---------|---------|
+| `Alt+P` | carica un modello per il **tag corrente** (Thingiverse se configurato, altrimenti Poly Haven) |
+| `tv:<query>` | cerca su Thingiverse e carica un modello (es. `tv:skull`, `tv:low poly`) |
+| `tvsearch:<query>` | elenca i risultati in console (nome + `thing:<id>`) |
+
+Note:
+- `/developers/thing-apps` è la **documentazione API**, non il punto dove si crea il token.
+- `/apps` è il **catalogo di app di terzi**: non serve.
+- Il token è personale: non condividerlo; se lo perdi o fai logout, rigenerane uno.
+- Senza token tutto continua a funzionare con i modelli GLB di fallback.
+
+### Caricare modelli diversi · più modelli · effetto glossy
+
+| Comando | Cosa fa |
+|---------|---------|
+| `Alt+P` | **on/off**. All'accensione carica **1 modello** per il **tag corrente**; spegnendo rimuove tutto |
+| `Alt+M` | **aggiunge un altro modello** (multi-oggetto, max 6) — ognuno vaga per conto suo |
+| `Alt+Shift+P` | apre il prompt **[3D SEARCH]**: digita un termine e premi `Enter` → cerca e carica |
+| `Alt+C` | **GLOSSY (Chrome) on/off**: materiale lucido con riflessi d'ambiente sui modelli |
+| `Alt+Shift+C` | **svuota** tutti i modelli dalla scena |
+
+Da commander:
+
+| Comando | Cosa fa |
+|---------|---------|
+| `ph:<query>` | carica per termine esplicito (es. `ph:skull`, `ph:barrel`, `ph:forest`) |
+| `phadd:<query>` | come `ph:` ma **aggiunge** invece di sostituire |
+| `phlist:<query>` | elenca in console i modelli Poly Haven che matchano |
+| `phclear` | svuota la scena |
+| `glossy:on` / `glossy:off` | effetto lucido |
+
+**Come caricare modelli diversi** — tre modi:
+1. **Cambia tag** (`Cmd+Shift+T` per ciclare, o `Cmd+W` per aggiungerne uno nuovo) poi `Alt+P`: ogni tag dà un modello diverso.
+2. **`Alt+Shift+P`** e digita un termine libero (in inglese funziona meglio: `barrel`, `forest`, `camera`, `chair`, `rock`).
+3. **`ph:<query>`** dal commander per la stessa cosa senza prompt.
+
+Ripetere `Alt+P` (o `ph:`) con lo stesso tag dà **modelli diversi**: il selettore evita di ripescare l'ultimo usato.
+
+**Multi-oggetto**: `Alt+M` aggiunge senza togliere i precedenti (fino a 6). Con più modelli in scena la scala si riduce automaticamente (fino a ~-47%) così non si accavallano, e ognuno ha sfasamento, rotazione e deformazione **proprie**.
+
+**Glossy** (`Alt+C`): sostituisce i materiali con `MeshPhysicalMaterial` — `roughness 0.08`, `clearcoat 1.0`, riflessi iridescenti — e costruisce una **environment map procedurale** (`RoomEnvironment` + `PMREMGenerator`) perché senza envMap un materiale lucido non ha nulla da riflettere. Il toggle è **non distruttivo**: i materiali originali sono salvati e ripristinati.
+
+### Movimento nello schermo
+
+Il modello **non resta al centro**: due oscillatori a frequenze non multiple (0.70/0.23 e 0.53/0.31) lo fanno vagare per il frame, più capriole/rollio lenti (`spinX`/`spinZ`). La camera resta quasi ferma e guarda il centro, così il movimento si vede davvero invece di essere annullato da un inseguimento.
+
+**Velocità e limiti di campo** — il vagabondaggio è volutamente **lento**: un ciclo completo dura ~56 s a riposo, ~29 s con i bassi a metà, ~20 s al massimo (prima scendeva a ~5 s e i modelli sfrecciavano fuori).
+
+**Rotazioni in slow-motion** — tempi per un giro completo:
+
+| | a riposo | audio al massimo |
+|---|---|---|
+| rotazione Y | ~70 s | ~25 s |
+| capriola (X) | ~115 s | ~36 s |
+| rollio (Z) | ~155 s | ~45 s |
+
+`dt` da `client.update()` è in **millisecondi**: va convertito in secondi (`dts = dt/1000`). Il vecchio `* dt * 60` trattava i millisecondi come frame e faceva girare tutto ~16× troppo veloce (un giro in 0.9 s con i bassi al massimo). Vale anche per `AnimationMixer.update()`, che in three.js vuole i secondi (le animazioni GLB giravano 1000× troppo veloci).
+
+L'ampiezza è calcolata perché il modello **resti dentro il frame**. Con camera a `z=3`, fov 45° e aspect 16:9, a `z=0` si vedono ±2.21 in orizzontale e ±1.24 in verticale; i due termini oscillanti si sommano (1 + 0.30 = 1.30×) e vanno sommati anche alla metà del modello, quindi:
+
+| Asse | Escursione max | + metà modello | Limite visibile |
+|------|----------------|----------------|-----------------|
+| X | 1.31 | 2.16 | 2.21 ✓ |
+| Y | 0.39 | 1.24 | 1.24 ✓ |
+
+La scala del modello normalizza la **diagonale** del bounding box a **1.7** (non più 2.0): un oggetto alto arrivava a ~1.0 di semi-altezza sui 1.24 disponibili, lasciando troppo poco spazio e uscendo dal campo.
+
+## Shortcut Orkav
+
+| Tasto | Azione |
+|-------|--------|
+| `Alt+V` | prompt commander `fx:` |
+| `Alt+T/D/J/K/R/S/N/Q/L/F/E` | shader FX (brokentv/datamosh/glitch/ameba/fractal/displace/chromawarp/fracture/glow/freezeloop/bubble) |
+| `Alt+Z` | webcam (attiva anche la maschera) |
+| `Alt+H` | maschera emoji sul viso |
+| `Alt+P` | modello 3D (Poly Haven / Thingiverse) |
+| `Alt+Shift+X` | Total Glitch + PANICO multilingua |
+| `Alt+G` | stormo GIF (boids) |
+| `Alt+B` | background random |
+| `Alt+Shift+B` | background auto-cycle |
+| `Alt+W` | big text overlay |
+| `Cmd+W` | **aggiungi tag** (prompt) → cerca subito immagini + GIF |
+| `Cmd+Shift+T` | tag successivo |
+| `Cmd+K` | commander |
+| `Cmd+L` | carica moduli .orca multipli |
+| `Cmd+Enter` | fullscreen |
+| `Esc` | reset tutto |
+
+### Aggiungere un tag con Cmd+W
+
+1. Premi `Cmd+W` → compare `[ADD TAG]` nella riga di stato
+2. Digita il tag (es. `cyberpunk`, `vaporwave`, `glitch art`)
+3. Premi `Enter` → il tag viene **aggiunto alla libreria** e **cercato subito**: carica un'immagine di background e uno stormo GIF da quel tag
+
+## Performance
+
+Il rendering gira su `requestAnimationFrame`; queste sono le ottimizzazioni attive.
+
+| Ottimizzazione | Guadagno |
+|----------------|----------|
+| **UI cacheata** — barra di stato, monitor audio (spettro FFT), overlay e guida si ridisegnano a ~15 fps in un buffer dedicato e si blittano ogni frame | **da ~5-6 ms a ~2 ms per frame** (era l'85% del costo) |
+| **Qualità adattiva shader** — la catena gira a risoluzione interna ridotta (0.5–1.0) e risale/scende da sola in base agli fps; l'upscale è nella `drawImage`, gratis | fino a **−75%** del costo shader |
+| **3D a 30 fps + 960×540** (era 60 fps a 1280×720) | **−75%** del costo 3D |
+| **`querySelectorAll` ogni 2 s** (era a ogni frame) | elimina una scansione del DOM 60 volte al secondo |
+| **Banda audio lisciata** (EMA con attacco rapido / rilascio lento) per i modelli 3D | reazioni fluide invece che a scatti |
+
+Misurato con un profiler per-frame (prima → dopo): **5.4–7.1 ms → 2.4–2.7 ms per frame**, con gli fps passati da ~60 a **~80–120**.
+
+Nelle modalità con input di testo (tag, big text, ricerca 3D, commander) la UI si ridisegna ogni frame, così digitare resta immediato.
+
+## Rendering (fps indipendenti dal BPM)
+
+Il rendering gira su **requestAnimationFrame** disaccoppiato dal clock del sequencer: a 120 BPM il sequencer ticka 8 volte/sec ma le visual girano a 30–60 fps. Il **terminale Orca è su un piano separato**: gli shader agiscono solo sul feed (background/GIF/effetti), la patch resta sempre leggibile sopra — tranne in Total Glitch.
+
+## Big Text
+
+- **`Alt+W`**: prompt big text; digita e premi `Enter`. Il testo va a schermo gigante.
+- **Durata leggibile**: la scritta resta a schermo abbastanza da leggerla tutta — minimo ~6 s, calcolata come **~300 ms per carattere** (minimo 3 s di lettura), fino a 30 s. Con MIDI la velocity allunga ancora (fino a +50%).
+- **Auto-fit**: la dimensione del font viene ridotta automaticamente perché **l'intero testo entri nella larghezza** dello schermo — niente più scritte tagliate ai bordi.
+- **Font**: 4 font display distintivi da dafont (`Ghastly Panic`, `Melted Monster`, `VCR OSD Mono`, `Nulshock`), incorporati in `sources/links/bigtext-fonts.css` e ruotati a ogni scritta. **Il font dell'interfaccia non cambia.**
+
+### Moto dei big text (ibrido, casuale per ogni scritta)
+
+Ogni scritta riceve a caso uno di questi comportamenti:
+
+| Moto | Effetto |
+|------|---------|
+| `oneshot` | compare **tutta intera e ferma** al centro (si legge subito) |
+| `run-x` | **corre** attraverso lo schermo in orizzontale (destra o sinistra), su una fascia verticale casuale |
+| `run-y` | **entra da sopra o da sotto** e attraversa in verticale |
+| `run-diag` | attraversa in **diagonale** (una delle 4 direzioni) |
+| `hybrid` | **ibrido**: prima tutta intera e ferma (~35–60% della vita), poi corre via |
+
+- Le scritte **intere/ferme** sono disegnate sopra gli shader (sempre leggibili, effetto chroma/glow); quelle **in corsa** sono disegnate dentro il feed, quindi le deformano gli shader.
+- Ogni corsa attraversa lo schermo **esattamente una volta** nell'arco della propria durata: il tempo di attraversamento si adatta alla lunghezza del testo e resta leggibile.
+
+## Score MIDI → Visual
+
+Ogni nota MIDI **generata dallo score Orca** (operatore `:`) produce un flash nel motore grafico (`u_flash` negli shader) — sincronizzato con la musica, indipendente dal framerate.
+
+## MIDI → Visuale (input esterno)
+
+| Canale | Destinazione | Nota → | Velocity → |
+|--------|-------------|--------|-----------|
+| 0–1 | Background | cambia immagine/video (tag) | dimensione 8–100% |
+| 2–3 | GIF swarm | carica stormo | scala 0.3×–2.5× |
+| 4–5 | Big Text | testo gigante da tag | flicker + durata |
+
+I tag ciclano su: pokemon, merda, 1312, michale jackson, twin peaks, gatti, simpson, rick and morty, the office, friends, south park, liminal space, horror vacui, cyberfeminism, cyberdeck, hacktivism, hacker, matrix, red pill, blue pill, sex workers, demons, lucifer, satan, esoterism, ai, ki, solar opposites, brickleberry, futurama.
+
+## Ableton Link
+
+- BPM sincronizzato con qualsiasi app Link (Ableton Live, VCV, ecc.)
+- Display: **BPM rosso fisso** (#ff4d4d) in play (stiamo mandando il sync), **peers verdi** (#4ade80) `P<n>` accanto.
+- Peer **bidirezionale**: segue il tempo/start-stop remoto e propaga il proprio.
+
+## MIDI hardware (USB)
+
+- Comando `mididevices` elenca output/input con indice; `midi:<n>` seleziona un **singolo** device di output (esclusivo), `midi:-1` azzera.
+- L'operatore `:` accetta un **6° parametro port**: `:canale.ottava.nota.vel.lunghezza.port` (port = `-1` usa il device selezionato, altrimenti indice esplicito).
+- Per l'Ableton Move usa in genere **Standalone Port** o **External Port** (non la Live Port, che controlla Ableton Live via USB).
+
+## Audio Reactor (7 filtri random)
+
+Microfono senza filtri (`echoCancellation/noiseSuppression/autoGainControl` off), gain 3.5.
+**7 filtri bandpass posizionati randomicamente** (seeded da `rand`) nello spettro logaritmico, con compensazione +6dB/ottava sulle alte e smoothing per-banda (bassi lenti, alti sui transienti). Ogni `fx:nuovo.400` riposiziona i filtri — la stessa musica pilota parametri diversi a ogni seed. Aggregate: `bass`, `mid`, `high`, `vol` (envelope).
+
 ## Base36 Table
 
 Orca operates on a base of **36 increments**. Operators using numeric values will typically also operate on letters and convert them into values as per the following table. For instance `Do` will bang every *24th frame*. 

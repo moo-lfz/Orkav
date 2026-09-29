@@ -1,72 +1,73 @@
 'use strict'
 
 function Udp (client) {
-  const dgram = require('dgram')
+  this.port = 49160
+  this.inputPort = 49160
+  this.outputPort = 49161
+  this.socket = null
+  this.isActive = false
+  this.messages = []
+  this.client = client
 
-  this.stack = []
-  this.port = null
-  this.socket = dgram ? dgram.createSocket('udp4') : null
-  this.listener = dgram ? dgram.createSocket('udp4') : null
-
-  this.start = function () {
-    if (!dgram || !this.socket || !this.listener) { console.warn('UDP', 'Could not start.'); return }
-    console.info('UDP', 'Starting..')
-
-    this.selectInput()
-    this.selectOutput()
-  }
-
-  this.clear = function () {
-    this.stack = []
-  }
-
-  this.run = function () {
-    for (const item of this.stack) {
-      this.play(item)
+  this.start = () => {
+    if (this.isActive) return
+    console.log('UDP', 'Starting..')
+    
+    if (window.api && window.api.udp) {
+      window.api.udp.createSocket(this.inputPort)
+      window.api.udp.onMessage((data) => {
+        this.messages.push(data)
+        if (this.client) this.client.update()
+      })
+      this.isActive = true
+      console.log('UDP', 'Started socket at 0.0.0.0:' + this.inputPort)
+    } else {
+      console.warn('UDP', 'API non disponibile')
     }
   }
 
-  this.push = function (msg) {
-    this.stack.push(msg)
+  this.run = function () {
+    // UDP non ha un loop, ma io.js si aspetta il metodo
   }
 
-  this.play = function (data) {
-    if (!this.socket) { return }
-    this.socket.send(Buffer.from(`${data}`), this.port, client.io.ip, (err) => {
-      if (err) { console.warn(err) }
-    })
+  this.clear = function () {
+    this.messages = []
   }
 
-  this.selectOutput = function (port = 49161) {
-    if (!dgram) { console.warn('UDP', 'Unavailable.'); return }
-    if (parseInt(port) === this.port) { console.warn('UDP', 'Already selected'); return }
-    if (isNaN(port) || port < 1000) { console.warn('UDP', 'Unavailable port'); return }
-
-    console.log('UDP', `Output: ${port}`)
-    this.port = parseInt(port)
+  this.selectInput = (port) => {
+    if (port === this.inputPort) return
+    this.inputPort = port
+    if (this.isActive) {
+      this.stop()
+      this.start()
+    }
   }
 
-  this.selectInput = (port = 49160) => {
-    if (!dgram) { console.warn('UDP', 'Unavailable.'); return }
-    if (this.listener) { this.listener.close() }
+  this.selectOutput = (port) => {
+    if (port === this.outputPort) return
+    this.outputPort = port
+  }
 
-    console.log('UDP', `Input: ${port}`)
-    this.listener = dgram.createSocket('udp4')
+  this.send = (message, targetPort = null, targetIP = '127.0.0.1') => {
+    const port = targetPort || this.outputPort
+    if (window.api && window.api.udp) {
+      window.api.udp.send(this.inputPort, message, port, targetIP)
+    }
+  }
 
-    this.listener.on('message', (msg, rinfo) => {
-      client.commander.trigger(`${msg}`)
-    })
+  this.stop = () => {
+    this.isActive = false
+  }
 
-    this.listener.on('listening', () => {
-      const address = this.listener.address()
-      console.info('UDP', `Started socket at ${address.address}:${address.port}`)
-    })
-
-    this.listener.on('error', (err) => {
-      console.warn('UDP', `Server error:\n ${err.stack}`)
-      this.listener.close()
-    })
-
-    this.listener.bind(port)
+  this.inspect = (max) => {
+    let str = ''
+    const msgs = this.messages.slice(-max * 4)
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i]
+      const msg = m.message || m
+      str += msg.length > 20 ? msg.substr(0, 20) + '..' : msg
+      if (i < msgs.length - 1) str += ' '
+    }
+    return str
   }
 }

@@ -1,30 +1,22 @@
 'use strict'
 
-/* global Midi */
-/* global MidiCC */
-/* global Mono */
-/* global Udp */
-/* global Osc */
-
 function IO (client) {
-  this.ip = '127.0.0.1'
-
+  this.client = client
   this.midi = new Midi(client)
   this.cc = new MidiCC(client)
   this.mono = new Mono(client)
   this.udp = new Udp(client)
   this.osc = new Osc(client)
 
-  this.start = function () {
+  this.start = () => {
     this.midi.start()
     this.cc.start()
     this.mono.start()
     this.udp.start()
     this.osc.start()
-    this.clear()
   }
 
-  this.clear = function () {
+  this.clear = () => {
     this.midi.clear()
     this.cc.clear()
     this.mono.clear()
@@ -32,7 +24,7 @@ function IO (client) {
     this.osc.clear()
   }
 
-  this.run = function () {
+  this.run = () => {
     this.midi.run()
     this.cc.run()
     this.mono.run()
@@ -40,30 +32,25 @@ function IO (client) {
     this.osc.run()
   }
 
-  this.silence = function () {
-    this.midi.silence()
-    this.mono.silence()
+  this.length = () => {
+    // --- MODIFICA: controlli di sicurezza ---
+    let total = 0
+    total += this.midi.length ? this.midi.length() : 0
+    total += this.cc.stack ? this.cc.stack.length : 0
+    total += this.mono.length ? this.mono.length() : 0
+    total += (this.udp && this.udp.messages) ? this.udp.messages.length : 0
+    total += (this.osc && this.osc.messages) ? this.osc.messages.length : 0
+    return total
   }
 
-  this.setIp = function (addr = '127.0.0.1') {
-    if (validateIP(addr) !== true && addr.indexOf('.local') === -1) { console.warn('IO', 'Invalid IP'); return }
-    this.ip = addr
-    console.log('IO', 'Set target IP to ' + this.ip)
-    this.osc.setup()
+  this.inspect = (max) => {
+    // --- MODIFICA: controlli di sicurezza ---
+    let str = ''
+    if (this.cc && this.cc.stack) { str += this.cc.stack.length > 0 ? 'CC ' : '' }
+    if (this.mono && this.mono.length && this.mono.length() > 0) { str += 'Mono ' }
+    if (this.midi && this.midi.length && this.midi.length() > 0) { str += 'Midi ' }
+    if (this.udp && this.udp.messages && this.udp.messages.length > 0) { str += 'UDP ' }
+    if (this.osc && this.osc.messages && this.osc.messages.length > 0) { str += 'OSC ' }
+    return str.trim() || 'idle'
   }
-
-  this.length = function () {
-    return this.midi.length() + this.mono.length() + this.cc.stack.length + this.udp.stack.length + this.osc.stack.length
-  }
-
-  this.inspect = function (limit = client.grid.w) {
-    let text = ''
-    for (let i = 0; i < this.length(); i++) {
-      text += '|'
-    }
-    return fill(text, limit, '.')
-  }
-
-  function validateIP (addr) { return !!(/^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(addr)) }
-  function fill (str, len, chr) { while (str.length < len) { str += chr }; return str }
 }

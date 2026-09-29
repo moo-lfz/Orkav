@@ -1,0 +1,187 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 6303 >>
+stream
+0.0 0.0 0.0 rg 0 0 595 842 re f
+0.04 0.04 0.04 rg 0 772 595 70 re f
+BT 1.0 0.06 0.94 rg /F2 30 Tf 40 794 Td (ORKAV) Tj ET
+BT 0.29 0.87 0.5 rg /F2 11 Tf 165 797 Td (QUICK START GUIDE) Tj ET
+BT 0.45 0.45 0.45 rg /F1 8 Tf 165 782 Td (orcav audiovisual livecoding ? fork of ORCA) Tj ET
+0.7 0.61 1.0 RG 1 w 40 767 m 555 767 l S
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 737 Td (AVVIO) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 730 m 200 730 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 715 Td (npm start) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 715 Td (da Orkav/desktop ? apre app + DevTools) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 701 Td (Mic) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 701 Td (consenti microfono \(senza: bande simulate dal beat\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 687 Td (Webcam) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 687 Td (consenti fotocamera per face tracking + maschere) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 673 Td (MIDI) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 673 Td (collega controller prima dell'avvio, tutti i canali attivi) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 653 Td (SHADER FX ? Alt + tasto \(default 400.400\)) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 646 m 200 646 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 631 Td (Alt+V) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 631 Td (prompt: fx:nome.rand.drive  es. fx:datamosh.400.400) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 617 Td (Alt+T) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 617 Td (brokentv ? TV rotta anni 90) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 603 Td (Alt+D) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 603 Td (datamosh ? compression artifacts) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 589 Td (Alt+J) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 589 Td (glitch digitale) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 575 Td (Alt+K) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 575 Td (ameba ? linee verticali che slittano su X) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 561 Td (Alt+R) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 561 Td (fractal ? Mandelbrot audio-reattivo) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 547 Td (Alt+S) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 547 Td (displace) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 533 Td (Alt+N) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 533 Td (chromawarp) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 519 Td (Alt+Q) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 519 Td (fracture) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 505 Td (Alt+L) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 505 Td (glow ? bagliore neon) Tj ET
+BT 0.7 0.61 1.0 rg /F2 9 Tf 48 491 Td (Alt+F) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 491 Td (freezeloop ? blocchi congelati in loop di pixel) Tj ET
+BT 0.7 0.61 1.0 rg /F2 9 Tf 48 477 Td (Alt+E) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 477 Td (bubble ? bolle iridescenti shiny glow) Tj ET
+BT 1.0 0.3 0.3 rg /F2 9 Tf 48 463 Td (fx: vuoto) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 463 Td (spegne la chain) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 443 Td (CAMERA ∑ FACE TRACKING ∑ 3D) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 436 m 200 436 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 421 Td (Alt+Z) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 421 Td (webcam come feed \(attiva anche la maschera viso\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 407 Td (Alt+H) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 407 Td (maschera emoji sul viso \(468 landmark MediaPipe\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 393 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 393 Td (? bocca/occhi/testa/rotazione pilotano gli shader) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 379 Td (Alt+P) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 379 Td (modello 3D ? segue il tag corrente, nessun setup) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 365 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 365 Td (? Poly Haven: 520+ modelli CC0, API pubblica senza token) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 351 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 351 Td (? opzionale Thingiverse: tvtoken:<TOKEN> \(serve approvazione\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 337 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 337 Td (? formati GLB/glTF, STL, OBJ, deformazione audio-reattiva) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 323 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 323 Td (? vaga per tutto lo schermo \(non resta al centro\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 309 Td (Alt+M) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 309 Td (aggiungi un altro modello \(multi-oggetto\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 295 Td (Alt+Shift+P) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 295 Td (cerca modello: digita un termine + Enter) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 281 Td (Alt+C) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 281 Td (GLOSSY / chrome on/off \(riflessi lucidi\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 267 Td (Alt+Shift+C) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 267 Td (svuota tutti i modelli) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 247 Td (TOTAL GLITCH & PANICO) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 240 m 200 240 l S
+BT 1.0 0.3 0.3 rg /F2 9 Tf 48 225 Td (Alt+Shift+X) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 225 Td (TOTAL GLITCH ? distrugge feed + patch + terminale) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 211 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 211 Td (? BPM random 0-999 molto veloce + scritta PANICO multilingua) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 197 Td (Esc) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 197 Td (esce dal glitch e ripristina tutto) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 183 Td (Alt+Shift+X) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 183 Td (di nuovo: esce anche lui) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 163 Td (CONTENUTO VISIVO \(il feed degli shader\)) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 156 m 200 156 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 141 Td (Alt+B) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 141 Td (background random dal tag corrente) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 127 Td (Alt+G) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 127 Td (stormo GIF boids) Tj ET
+BT 1.0 0.06 0.94 rg /F2 9 Tf 48 113 Td (Alt+W) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 113 Td (big text overlay \(max 4\) ? auto-fit + font dafont) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 99 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 99 Td (? resta ~300ms/carattere \(min 6s\) per leggerlo tutto) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 85 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 85 Td (? moto casuale: tutto intero / corre in orizzontale) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 3427 >>
+stream
+0.0 0.0 0.0 rg 0 0 595 842 re f
+0.04 0.04 0.04 rg 0 802 595 40 re f
+BT 0.29 0.87 0.5 rg /F2 10 Tf 40 816 Td (ORKAV ? QUICK START GUIDE \(continua\)) Tj ET
+0.7 0.61 1.0 RG 1 w 40 797 m 555 797 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 772 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 772 Td (  / entra da sopra o sotto / diagonale / ibrido) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 758 Td (Cmd+Shift+T) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 758 Td (cambia tag) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 744 Td (Cmd+W) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 744 Td (aggiungi tag e cerca subito immagini + GIF) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 724 Td (MIDI ? tutti i canali in ascolto) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 717 m 200 717 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 702 Td (nota ON) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 702 Td (bg: cambia img/video | gif: swarm | bigtext: scritta) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 688 Td (velocity) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 688 Td (dimensione bg / scala gif / flicker testo) Tj ET
+BT 1.0 0.06 0.94 rg /F2 9 Tf 48 674 Td (score Orca) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 674 Td (ogni nota generata = flash visivo sincronizzato) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 660 Td (midi:<n>) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 660 Td (seleziona output device \(mididevices li elenca\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 646 Td (midi:-1) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 646 Td (azzera la selezione output) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 626 Td (LINK / BPM / DISPLAY) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 619 m 200 619 l S
+BT 1.0 0.3 0.3 rg /F2 9 Tf 48 604 Td (BPM rosso) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 604 Td (play attivo ? Orkav sta mandando il sync Link) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 590 Td (>  lampeggia) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 590 Td (batte col sequencer \(=/+ alternati\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 576 Td (P<n> verde) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 576 Td (peer Ableton Link collegati) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 562 Td (C:/G:) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 562 Td (carico CPU/GPU + FPS + temperatura nel monitor) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 542 Td (SEQUENCER \(essenziale ORCA\)) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 535 m 200 535 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 520 Td (Space) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 520 Td (play / pausa) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 506 Td (Cmd+K) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 506 Td (commander \(bpm:140, play, stop, find:\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 492 Td (Cmd+G) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 492 Td (guida operatori + lista comandi a schermo) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 478 Td (Cmd+L) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 478 Td (carica moduli .orca multipli \(inject:nome dal commander\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 464 Td (Cmd+Enter) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 464 Td (fullscreen) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 450 Td (Cmd+S) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 450 Td (esporta patch .orca) Tj ET
+0.7 0.61 1.0 RG 0.5 w 40 60 m 555 60 l S
+BT 0.45 0.45 0.45 rg /F1 8 Tf 40 44 Td (ORKAV ? underground audiovisual engineering. fx:nome.rand.drive | rand = 3 parametri shader + 7 filtri spettrali | drive = audio capture) Tj ET
+BT 1.0 0.06 0.94 rg /F1 8 Tf 40 32 Td (ALT+SHIFT+X quando tutto va in fiamme. Esc per uscirne. Sempre.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000127 00000 n 
+0000000263 00000 n 
+0000006618 00000 n 
+0000006754 00000 n 
+0000010233 00000 n 
+0000010301 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+10374
+%%EOF

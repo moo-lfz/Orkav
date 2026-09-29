@@ -111,3 +111,29 @@ function lzwDecode (minCodeSize, data) {
   }
   return out
 }
+// --- GIF DECODER CLASS with MIDI control ---
+function GifDecoder (client) {
+  this.client = client
+  this.midiNote = { note: 0, channel: 0 }
+  this.midiCC = new Array(16)
+  for (let i = 0; i < 16; i++) {
+    this.midiCC[i] = new Array(128).fill(0)
+  }
+
+  this.onMidiNote = function (channel, note, velocity) {
+    // In ascolto su TUTTI i canali MIDI (0-15)
+    // Ogni nota = nuovo GIF swarm. Velocity = size
+    var sizeFactor = velocity / 127;
+    this.pendingGifSize = 0.3 + sizeFactor * 2.2; // scala 0.3..2.5
+    var tagKey = this.client.tags[(note + channel * 3) % this.client.tags.length];
+    if (this.client.background) {
+      this.client.background.gifScale = this.pendingGifSize;
+      this.client.background.loadSwarmByTag(tagKey);
+    }
+    console.log('GIF MIDI note:', { note: note, vel: velocity, size: this.pendingGifSize, tag: tagKey });
+  }
+
+  this.onMidiCC = function (channel, cc, value) {
+    // CC disabilitati — solo note attivi
+  }
+}

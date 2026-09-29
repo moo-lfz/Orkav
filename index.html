@@ -2,31 +2,33 @@
 <html>
   <head>
     <meta charset='utf-8'>
-    <style>
-      body { margin: 0; padding: 0; overflow: hidden; background: #000000; }
-      canvas { display: block; }
-    </style>
     <link rel="stylesheet" type="text/css" href="links/main.css"/>
     <script type="text/javascript" src="scripts/lib/acels.js"></script>
     <script type="text/javascript" src="scripts/lib/theme.js"></script>
     <script type="text/javascript" src="scripts/lib/history.js"></script>
     <script type="text/javascript" src="scripts/lib/source.js"></script>
     <script type="text/javascript" src="scripts/core/library.js"></script>
+    
+    <!-- IO dipendenze: prima midi, cc, mono, udp, osc, poi io.js -->
+    <script type="text/javascript" src="scripts/core/io/midi.js"></script>
+    <script type="text/javascript" src="scripts/core/io/cc.js"></script>
+    <script type="text/javascript" src="scripts/core/io/mono.js"></script>
+    <script type="text/javascript" src="scripts/core/io/udp.js"></script>
+    <script type="text/javascript" src="scripts/core/io/osc.js"></script>
     <script type="text/javascript" src="scripts/core/io.js"></script>
+    
     <script type="text/javascript" src="scripts/core/operator.js"></script>
     <script type="text/javascript" src="scripts/core/orca.js"></script>
     <script type="text/javascript" src="scripts/core/transpose.js"></script>
-    <script type="text/javascript" src="scripts/core/io/cc.js"></script>
-    <script type="text/javascript" src="scripts/core/io/midi.js"></script>
-    <script type="text/javascript" src="scripts/core/io/mono.js"></script>
-    <script type="text/javascript" src="scripts/core/io/osc.js"></script>
-    <script type="text/javascript" src="scripts/core/io/udp.js"></script>
     <script type="text/javascript" src="scripts/clock.js"></script>
     <script type="text/javascript" src="scripts/commander.js"></script>
     <script type="text/javascript" src="scripts/cursor.js"></script>
     <script type="text/javascript" src="scripts/audio-reactor.js"></script>
     <script type="text/javascript" src="scripts/fx-situations.js"></script>
+    <script type="text/javascript" src="scripts/gif-decoder.js"></script>
+    <script type="text/javascript" src="scripts/background.js"></script>
     <script type="text/javascript" src="scripts/client.js"></script>
+    
     <title>Orca</title>
   </head>
   <body>

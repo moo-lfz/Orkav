@@ -1,57 +1,63 @@
 'use strict'
 
 function Osc (client) {
-  const osc = require('node-osc')
+  this.port = 49162
+  this.isActive = false
+  this.messages = []
+  this.client = client
 
-  this.stack = []
-  this.socket = null
-  this.port = null
-  this.options = { default: 49162, tidalCycles: 6010, sonicPi: 4559, superCollider: 57120, norns: 10111 }
-
-  this.start = function () {
-    if (!osc) { console.warn('OSC', 'Could not start.'); return }
-    console.info('OSC', 'Starting..')
-    this.setup()
-    this.select()
-  }
-
-  this.clear = function () {
-    this.stack = []
+  this.start = () => {
+    if (this.isActive) return
+    console.log('OSC', 'Starting..')
+    
+    if (window.api && window.api.osc) {
+      window.api.osc.createServer(this.port)
+      window.api.osc.onMessage((data) => {
+        this.messages.push(data.msg)
+        if (this.client) this.client.update()
+      })
+      this.isActive = true
+      console.log('OSC', 'Started socket at 127.0.0.1:' + this.port)
+    } else {
+      console.warn('OSC', 'API non disponibile')
+    }
   }
 
   this.run = function () {
-    for (const item of this.stack) {
-      this.play(item)
+    // OSC non ha un loop, ma io.js si aspetta il metodo
+  }
+
+  this.clear = function () {
+    this.messages = []
+  }
+
+  this.select = (port) => {
+    if (port === this.port) return
+    this.port = port
+    if (this.isActive) {
+      this.stop()
+      this.start()
     }
   }
 
-  this.push = function (path, msg) {
-    this.stack.push({ path, msg })
-  }
-
-  this.play = function ({ path, msg }) {
-    if (!this.socket) { console.warn('OSC', 'Unavailable socket'); return }
-    const oscMsg = new osc.Message(path)
-    for (let i = 0; i < msg.length; i++) {
-      oscMsg.append(client.orca.valueOf(msg.charAt(i)))
+  this.send = (address, args) => {
+    if (window.api && window.api.osc) {
+      window.api.osc.send(this.port, address, args)
     }
-    this.socket.send(oscMsg, (err) => {
-      if (err) { console.warn(err) }
-    })
   }
 
-  this.select = function (port = this.options.default) {
-    if (parseInt(port) === this.port) { console.warn('OSC', 'Already selected'); return }
-    if (isNaN(port) || port < 1000) { console.warn('OSC', 'Unavailable port'); return }
-    console.info('OSC', `Selected port: ${port}`)
-    this.port = parseInt(port)
-    this.setup()
+  this.stop = () => {
+    this.isActive = false
   }
 
-  this.setup = function () {
-    if (!this.port) { return }
-    if (this.socket) { this.socket.close() }
-    this.socket = new osc.Client(client.io.ip, this.port)
-    console.info('OSC', `Started socket at ${client.io.ip}:${this.port}`)
+  this.inspect = (max) => {
+    let str = ''
+    const msgs = this.messages.slice(-max * 2)
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i]
+      str += m.address || m
+      if (i < msgs.length - 1) str += ' '
+    }
+    return str
   }
 }

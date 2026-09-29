@@ -564,7 +564,10 @@ library[':'] = function OperatorMidi (orca, x, y, passive) {
     const note = this.listen(this.ports.note)
     const velocity = this.listen(this.ports.velocity, true)
     const length = this.listen(this.ports.length, true)
-    const port = this.listen(this.ports.port, true) // <--- LEGGIAMO IL 6°
+    // Port: leggiamo il glyph GREZZO (senza clamp) così il default '-1' resta -1
+    // (e non viene clamppato a 0), permettendo il routing verso i device selezionati.
+    const portRaw = this.listen(this.ports.port)
+    const port = (portRaw === '.' || portRaw === '*' || portRaw === '-1') ? -1 : orca.valueOf(portRaw)
 
     // Passa il 6° parametro "port" alla funzione push di midi.js
     client.io.midi.push(channel, octave, note, velocity, length, false, port)
