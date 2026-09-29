@@ -5,8 +5,15 @@ function Background (client) {
   this.webcam = null; this.webcamStream = null
   this.autoTimer = null; this.autoUntil = 0; this.lastT = 0; this.localUsed = 0
   this.gifSourceIndex = 0; this.gifHost = null; this.swarmAuto = null
-  this.localDir = '/Users/moo/Orca/backgrounds'
-  this.giphyKey = 'REMOVED-BY-SECURITY-CLEANUP'
+  // Cartella locale di background/GIF (OPZIONALE). Di default nessuna: si usa
+  // la rete (Giphy/Commons) o i frame procedurali. Impostala con bgdir:<path>.
+  this.localDir = null
+  try { this.localDir = window.localStorage.getItem('bg_dir') || null } catch (e) { this.localDir = null }
+  // Chiave Giphy (OPZIONALE). NON è nel repo: creane una gratuita su
+  // developers.giphy.com e impostala con  giphykey:<LA_TUA_KEY>.
+  // Senza chiave il swarm passa a Commons e poi ai frame procedurali.
+  this.giphyKey = null
+  try { this.giphyKey = window.localStorage.getItem('giphy_key') || null } catch (e) { this.giphyKey = null }
   this.tagKeys = ['pokemon','merda','1312','michale jackson','twin peaks','gatti','simpson','rick and morty','the office','friends','south park',
     'liminal space','horror vacui','cyberfeminism','cyberdeck','hacktivism','hacker','matrix','red pill','blue pill','sex workers','demons',
     'lucifer','satan','esoterism','ai','ki','solar opposites','brickleberry','futurama']
@@ -45,6 +52,28 @@ function Background (client) {
   // MIDI control intervals
   this.imageBackgroundInterval = 30000; // default 30 seconds
   this.swarmInterval = 8000; // default 8 seconds
+}
+
+// Chiave Giphy: si salva in localStorage, NON nel repo (era hardcoded).
+Background.prototype.setGiphyKey = function (k) {
+  this.giphyKey = (k || '').trim() || null
+  try {
+    if (this.giphyKey) window.localStorage.setItem('giphy_key', this.giphyKey)
+    else window.localStorage.removeItem('giphy_key')
+  } catch (e) {}
+  console.log('[Background] Giphy key', this.giphyKey ? 'impostata' : 'rimossa')
+  return !!this.giphyKey
+}
+
+// Cartella locale di background/GIF (opzionale)
+Background.prototype.setLocalDir = function (d) {
+  this.localDir = (d || '').trim() || null
+  try {
+    if (this.localDir) window.localStorage.setItem('bg_dir', this.localDir)
+    else window.localStorage.removeItem('bg_dir')
+  } catch (e) {}
+  console.log('[Background] cartella locale:', this.localDir || '(nessuna)')
+  return this.localDir
 }
 
 Background.prototype.pickTagKey = function () {
@@ -99,7 +128,7 @@ Background.prototype.loadSwarm = async function () {
   if (!this.swarmAuto) { this.swarmAuto = setInterval(() => { this.loadSwarm() }, 8000) }
   let src = null
   try {
-    if (window.api && window.api.fs) {
+    if (window.api && window.api.fs && this.localDir) {
       // readdirSync è async (IPC invoke) → await
       const gifs = (await window.api.fs.readdirSync(this.localDir)).filter(f => /\.gif$/i.test(f))
       if (gifs.length) { src = 'file://' + this.localDir + '/' + gifs[Math.floor(Math.random() * gifs.length)] }
@@ -131,6 +160,8 @@ Background.prototype.tryNextGifSource = function () {
 // Giphy: usa fixed_height_small (GIF ~200px, leggere) → decodifica nativa del browser,
 // NIENTE decodeGif sincrono che bloccava il main thread su GIF grandi.
 Background.prototype.fetchGiphy = function (q) {
+  // Chiave non configurata → salta subito alla sorgente successiva
+  if (!this.giphyKey) { this.tryNextGifSource(); return }
   const url = 'https://api.giphy.com/v1/gifs/search?api_key=' + this.giphyKey + '&q=' + encodeURIComponent(q) + '&limit=25&rating=r'
   this.fetchJSON(url, (json) => {
     const gifs = json.data
@@ -311,7 +342,7 @@ Background.prototype.fetchArchive = function () {
 Background.prototype.loadBackground = async function () {
   let files = []
   try {
-    if (window.api && window.api.fs) {
+    if (window.api && window.api.fs && this.localDir) {
       // readdirSync è async (IPC invoke) → await
       files = (await window.api.fs.readdirSync(this.localDir)).filter(f => /\.(png|jpe?g|gif|webp|mp4|webm|ogv)$/i.test(f))
     }

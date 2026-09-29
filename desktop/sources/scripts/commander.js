@@ -124,6 +124,23 @@ function Commander (client) {
         console.warn('[Commander] API loadpatch non disponibile')
       }
     },
+    // === CHIAVI / PERCORSI OPZIONALI ===
+    // giphykey:<KEY> → chiave API Giphy (gratuita su developers.giphy.com).
+    // NON è nel repo: senza chiave il GIF swarm passa a Commons → frame procedurali.
+    giphykey: (p) => {
+      if (!client.background) { return }
+      const k = (p.str || '').trim()
+      if (!k) { console.warn('Commander', 'Uso: giphykey:<KEY>  (gratuita su developers.giphy.com)'); return }
+      client.background.setGiphyKey(k)
+      client._modsNotice = { names: ['Giphy key OK'], until: performance.now() + 4000 }
+    },
+    // bgdir:<percorso> → cartella locale opzionale con immagini/GIF di background
+    bgdir: (p) => {
+      if (!client.background) { return }
+      const d = (p.str || '').trim()
+      client.background.setLocalDir(d)
+      client._modsNotice = { names: [d ? 'bg dir: ' + d : 'bg dir rimossa'], until: performance.now() + 4000 }
+    },
     // === MODELLI 3D ===
     // ph:<query> → Poly Haven (CC0, nessun token). Senza query usa il tag corrente.
     ph: (p) => {

@@ -80,7 +80,7 @@ Model3d.prototype.resolveModelsDir = function () {
     const base = window.location.href.replace('file://', '').replace(/\/[^\/]*$/, '')
     return base + '/models'
   } catch (e) {
-    return '/Users/moo/Documents/DSH/Orkav/desktop/sources/models'
+    return null   // nessun path personale hardcoded
   }
 }
 

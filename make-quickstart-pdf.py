@@ -223,7 +223,8 @@ for off in offsets:
     out += f"{off:010d} 00000 n \n".encode()
 out += f"trailer\n<< /Size {len(objs)+1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode()
 
-path = "/Users/moo/Documents/DSH/Orkav/ORKAV-quickstart.pdf"
+import os
+path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ORKAV-quickstart.pdf")
 with open(path, 'wb') as f:
     f.write(bytes(out))
 print("PDF creato:", path, len(out), "bytes, pagine:", len(pages))
