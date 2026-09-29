@@ -1,4 +1,14 @@
-# ORCΛ
+# ORKAV
+
+**Orkav** è un fork audiovisivo di **[ORCΛ](https://github.com/hundredrabbits/Orca)**: mantiene intatto il sequencer esoterico di Hundred Rabbits e ci costruisce sopra un motore visivo — **11 shader audio-reattivi**, **Ableton Link bidirezionale**, routing **MIDI** avanzato, **face tracking** (MediaPipe), **modelli 3D** (Poly Haven / Thingiverse), big text, tag media e **Total Glitch**.
+
+- **Guida rapida**: [`ORKAV-quickstart.pdf`](ORKAV-quickstart.pdf) — **Glossario completo**: [`GLOSSARY.md`](GLOSSARY.md)
+- **Avvio**: `cd desktop && npm install && npm start`
+- Tutto quello che Orkav aggiunge è descritto nella sezione [**ORKAV — Fork audiovisivo**](#orkav--fork-audiovisivo).
+
+---
+
+# ORCΛ (upstream) — documentazione originale
 
 <img src="https://raw.githubusercontent.com/hundredrabbits/100r.co/master/media/content/characters/orca.hello.png" width="300"/>
 
