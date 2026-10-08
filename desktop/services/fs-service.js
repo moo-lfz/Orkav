@@ -104,6 +104,58 @@ function createFsService(win) {
     if (!p) return false;
     try { fs.unlinkSync(p); return true } catch (e) { return false }
   });
+
+  // --- cache BINARIA (modelli 3D: .gltf/.bin/texture) ---------------------
+  // Stessa sanificazione delle chiavi; niente JSON, così un .bin da 400 KB non
+  // diventa 550 KB di base64. Il timestamp è l'mtime del file.
+  function binPath(key) {
+    const k = String(key == null ? '' : key).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (!k || k.length > 64) return null;
+    return path.join(app.getPath('userData'), 'orkav-cache', 'bin', k + '.bin');
+  }
+
+  ipcMain.handle('cache:getBin', (event, key) => {
+    if (!isTrustedSender(event, win)) throw new Error('Untrusted sender');
+    const p = binPath(key);
+    if (!p) return null;
+    try {
+      const stat = fs.statSync(p);
+      const buf = fs.readFileSync(p);
+      // Ritorna i byte + l'età, così il renderer può applicare un TTL.
+      return { t: stat.mtimeMs, b: buf };
+    } catch (e) { return null }
+  });
+
+  ipcMain.handle('cache:setBin', (event, { key, data }) => {
+    if (!isTrustedSender(event, win)) throw new Error('Untrusted sender');
+    const p = binPath(key);
+    if (!p) return false;
+    try {
+      const buf = Buffer.from(data);
+      if (buf.length > 40 * 1024 * 1024) return false;  // limite di sicurezza
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      const tmp = p + '.tmp';
+      fs.writeFileSync(tmp, buf);
+      fs.renameSync(tmp, p);
+      return true;
+    } catch (e) {
+      console.error('[fs-service] cache:setBin', key, e && e.message ? e.message : e);
+      return false;
+    }
+  });
+
+  // Dimensione totale della cache binaria (per diagnostica / pulizia)
+  ipcMain.handle('cache:size', (event) => {
+    if (!isTrustedSender(event, win)) throw new Error('Untrusted sender');
+    try {
+      const dir = path.join(app.getPath('userData'), 'orkav-cache', 'bin');
+      let total = 0, n = 0;
+      for (const f of fs.readdirSync(dir)) {
+        try { total += fs.statSync(path.join(dir, f)).size; n++ } catch (e) {}
+      }
+      return { files: n, bytes: total };
+    } catch (e) { return { files: 0, bytes: 0 } }
+  });
 }
 
 module.exports = { createFsService };

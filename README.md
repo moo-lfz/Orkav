@@ -206,16 +206,25 @@ Più utility: `u_bass`, `u_mid`, `u_high`, `u_vol`, `u_flash` (transienti + **sc
 | `fractal` | `Alt+R` | Mandelbrot/Julia audio-reattivo |
 | `displace` | `Alt+S` | displacement map |
 | `chromawarp` | `Alt+N` | curvatura cromatica |
-| `fracture` | `Alt+Q` | fratture schermo |
+| `fracture` | `Alt+Q` | **vetro infranto**: shard Worley irregolari con rifrazione per-shard, dispersione cromatica, biselli, crepe capillari e caustiche |
 | `glow` | `Alt+L` | bagliore neon |
 | `freezeloop` | `Alt+F` | **congela parti dello schermo e le fa roteare in loop di pixel** (feedback via `u_prev`) |
-| `bubble` | `Alt+E` | **bolle iridescenti lucide** con rifrazione, bordo thin-film e highlight speculare |
+| `bubble` | `Alt+E` | **schiuma di sapone**: due ottave di Worley, pellicole traslucide che deformano il feed, bordi di Plateau iridescenti |
 
 #### `freezeloop` — freeze + feedback
 Lo schermo è diviso in una griglia di blocchi. Alcuni blocchi vengono **congelati** (selezione da hash + bassi + flash) e smettono di leggere il feed live: campionano il **frame precedente** con una rotazione (`twirl`) attorno al centro del blocco e se lo rimandano indietro. Ne risulta un **loop chiuso di pixel** che gira su se stesso. Un decadimento < 1 più una minima iniezione di frame live tengono il loop stabile (non satura e non muore), e una leggera rotazione di tinta lo fa "girare" visibilmente.
 
-#### `bubble` — bolle shiny
-Un campo di bolle (celle con centri jitterati, in movimento) che **rifrangono il feed** come lenti sferiche, con **aberrrazione cromatica radiale**, **bordo iridescente thin-film** che dipende dall'angolo di incidenza, **highlight speculare** e un **alone glow** che si somma al feed. Il raggio respira coi bassi, le alte fanno scintillare i bordi.
+#### `bubble` — schiuma (foam)
+Due ottave di **Worley** (`cellular2x2x2`) combinate in `min`: una massa di celle piccole, non più quattro bolle giganti. L'`F2-F1` dell'ottava vincente disegna la **rete di bordi di Plateau** dove tre celle si incontrano, quindi le pellicole hanno giunzioni luminose e spessori sottili.
+
+La **deformazione è reale**: il gradiente del campo cellulare (differenze finite sulla stessa base ruotata) fa da normale di superficie, e `u_tex` viene rifratto lungo di essa con lente che cresce verso il bordo + **aberrrazione cromatica a 3 tap**; sopra, un `warp()` di dominio deforma tutto lo schermo. Misurato su GPU: `drive` 0→1 sposta i pixel di **26.6/255** in media, i bassi di **22.2**, entrambi di **32.0**.
+
+L'iridescenza è `0.5+0.5*cos(6.2831*(spessore + vec3(0,0.33,0.67)))`, con lo spessore legato alla geometria della cella: le bande di colore seguono le celle e derivano col tempo e con l'audio. Il corpo della pellicola resta **traslucido** (il feed si vede attraverso, tinto e rifratto), con bordi bagnati, shimmer sulle alte, bloom sul flash, poi strobe e vignetta.
+
+#### `fracture` — vetro infranto
+Shard **Worley irregolari** (ricerca 3×3 con jitter da `hash`, non una griglia regolare). Da `d1`/`d2` derivano bordo, bisello, glint speculare e bordo di Plateau.
+
+Ogni shard ha **rifrazione propria**: offset dal suo hash, rotazione attorno al proprio centro, e R/G/B campionati a offset diversi con separazione che **cresce verso i bordi** (il vetro è più spesso lì) — è la dispersione cromatica che vende l'effetto. Una seconda rete cellulare fine (celle ×2.6) disegna **crepe capillari** con glow colorato via `hue()` e una caustica lungo le crepe. Ogni shard ha una **profondità**: parallasse su spinta e rifrazione, e quelli più lontani sono più scuri/desaturati. Il tempo è **quantizzato** (`tk = floor(u_time*rate)`) e solo una frazione di shard "schizza" via ad ogni burst, con un feedback breve da `u_prev`.
 
 ## Total Glitch & Panico
 
@@ -227,6 +236,23 @@ Un campo di bolle (celle con centri jitterati, in movimento) che **rifrangono il
 - **`Alt+Z`**: attiva la webcam come feed (attiva automaticamente anche la maschera viso).
 - **`Alt+H`**: maschera emoji sul viso — 468 landmark MediaPipe FaceMesh; le emoticon **swap velocemente**, si **freezano sui bassi** (bass > 0.8) e ogni ~17 secondi; ancorata ~20px sotto il centro del viso.
 - I landmark del viso (bocca/occhi/rotazione/imbardata/beccheggio) **pilotano i parametri degli shader** (`u_face`/`u_face2`).
+
+### Glitch dedicato alle emoticon (`MaskFX`)
+
+Le emoticon **nascono già glitchate**: c'è uno shader solo per loro, sempre attivo quando c'è una maschera, in `desktop/sources/shaders/mask/glitch.frag` (sottocartella: **non** fa parte della catena FX e non compare fra gli shader selezionabili).
+
+`MaskFX` (`scripts/mask-fx.js`) è una pipeline WebGL2 dedicata, 256×256 **con alpha**: la catena FX normale lavora sul feed già composto, mentre la maschera va glitchata **prima** di essere disegnata sul viso e deve restare trasparente attorno all'emoji (un quadrato glitchato coprirebbe la faccia).
+
+Lo shader fa, in ordine: **slice displace** (bande orizzontali spostate a scatti, quantizzate nel tempo), **block corrupt**, **RGB split** crescente verso i bordi, **tracking band**, **rim neon** ricavato dall'alpha e tinto con una hue che ruota, **drop/cut** sul flash. L'alpha finale non supera mai quello dell'emoji originale. Ogni emoticon ha il **suo** seed, quindi il pattern cambia ad ogni swap.
+
+### Perché il face tracking bloccava tutto
+
+Erano due cose, entrambe risolte:
+
+| Causa | Prima | Ora |
+|-------|-------|-----|
+| Pool maschere | **110 canvas 512×512** (~115 MB) + 110 `fillText` da 420px **sincroni** in un solo frame all'attivazione | lista di stringhe + rasterizzazione **on demand** a 256×256, cache LRU di 24 |
+| `detectForVideo` | ogni frame, sul main thread | un frame sì e uno no (~30 Hz): la maschera resta incollata al viso |
 
 ## Modelli 3D — Poly Haven (default) · Thingiverse (opzionale)
 
@@ -307,9 +333,29 @@ Ripetere `Alt+P` (o `ph:`) con lo stesso tag dà **modelli diversi**: il seletto
 
 **Glossy** (`Alt+C`): sostituisce i materiali con `MeshPhysicalMaterial` — `roughness 0.08`, `clearcoat 1.0`, riflessi iridescenti — e costruisce una **environment map procedurale** (`RoomEnvironment` + `PMREMGenerator`) perché senza envMap un materiale lucido non ha nulla da riflettere. Il toggle è **non distruttivo**: i materiali originali sono salvati e ripristinati.
 
+### Tag per canale (bg · gif · 3D · font)
+
+I tag sono **indipendenti per canale**: le GIF possono pescare da un tag diverso dalle immagini di background, dai modelli 3D e dai font dei big text. `null` = segue il tag globale.
+
+| Comando | Effetto |
+|---------|---------|
+| `tag:<nome>` | tag **globale** (ricarica bg, GIF e 3D che non hanno un override) |
+| `tagbg:<nome>` | solo le **immagini di background** |
+| `taggif:<nome>` | solo lo **stormo GIF** |
+| `tag3d:<nome>` | solo i **modelli 3D** |
+| `tagfont:<nome>` | solo i **font dei big text** (tag diversi partono da font diversi, poi ruotano) |
+| `tagbg:` (vuoto) | rimuove l'override: il canale torna a seguire il globale |
+| `tags` | stampa la situazione dei quattro canali |
+
+`Cmd+Shift+T` cicla il tag **globale** e ricarica background, GIF e (se attivo) modello 3D. `Alt+Shift+T` cicla **solo** il tag dei modelli 3D.
+
+`tag:`, `tagbg:`, `taggif:`, `tag3d:` e `tagfont:` accettano anche un tag nuovo: viene aggiunto a `commonsTags` e all'elenco dei tag, quindi da lì in poi è raggiungibile anche con `Cmd+Shift+T`.
+
 ### Movimento nello schermo
 
-Il modello **non resta al centro**: due oscillatori a frequenze non multiple (0.70/0.23 e 0.53/0.31) lo fanno vagare per il frame, più capriole/rollio lenti (`spinX`/`spinZ`). La camera resta quasi ferma e guarda il centro, così il movimento si vede davvero invece di essere annullato da un inseguimento.
+Il modello **non nasce più al centro**: prende una **zona** dall'allocatore di slot (vedi sotto) e ci oscilla attorno con due oscillatori a frequenze non multiple (0.70/0.23 e 0.53/0.31), più capriole/rollio lenti (`spinX`/`spinZ`). La camera resta quasi ferma e guarda il centro, così il movimento si vede davvero invece di essere annullato da un inseguimento.
+
+> **Bug storico del "flickering"**: `P.drift += dt` sommava i **millisecondi**, quindi la fase avanzava di ~17 unità per frame. Con `speed ≈ 0.16` il seno girava a **~18 Hz**: il modello non vagava, **vibrava** sul posto. Ora `P.drift += dts` (secondi) → ~0.96 unità/s, un ciclo in ~56 s. Verificato a runtime.
 
 **Velocità e limiti di campo** — il vagabondaggio è volutamente **lento**: un ciclo completo dura ~56 s a riposo, ~29 s con i bassi a metà, ~20 s al massimo (prima scendeva a ~5 s e i modelli sfrecciavano fuori).
 
@@ -332,6 +378,28 @@ L'ampiezza è calcolata perché il modello **resti dentro il frame**. Con camera
 
 La scala del modello normalizza la **diagonale** del bounding box a **1.7** (non più 2.0): un oggetto alto arrivava a ~1.0 di semi-altezza sui 1.24 disponibili, lasciando troppo poco spazio e uscendo dal campo.
 
+## Distribuzione degli elementi (slot)
+
+Prima **tutto compariva al centro**, dove sta la patch Orca, e gli elementi si accavallavano. Ora c'è un **allocatore di slot** su `client` (`nextSlot()`): 12 zone **periferiche** in coordinate normalizzate, assegnate **a rotazione** con partenza casuale.
+
+| Elemento | Come usa gli slot |
+|----------|-------------------|
+| modelli 3D (`Alt+P` / `Alt+M`) | lo slot viene convertito in coordinate mondo (`×0.42` di 2.21 in X, `×0.45` di 1.24 in Y) e diventa il **centro dell'oscillazione**; il vagabondaggio si stringe con `1/√n` quando ci sono più modelli |
+| layer immagine (`Alt+B`, MIDI) | posizione iniziale del layer |
+| stormo GIF (`Alt+G`) | centro di spawn dello stormo |
+
+`Alt+P` riparte da una zona diversa ad ogni attivazione (`resetSlots`).
+
+## Luce e materiali 3D
+
+I modelli **erano sempre scuri**. Tre cause, tutte risolte:
+
+1. **Nessuna environment map.** I glTF di Poly Haven sono PBR fotogrammetrici: senza IBL un metallo non ha nulla da riflettere e va a nero. La `RoomEnvironment` + `PMREMGenerator` ora si costruisce **sempre** (prima solo col glossy) e finisce in `scene.environment`.
+2. **Nessun tonemapping.** Aggiunti `outputColorSpace = SRGBColorSpace` e `ACESFilmicToneMapping` con esposizione 1.25.
+3. **Luci povere.** Aggiunte una `HemisphereLight` (schiarisce le facce in ombra senza appiattire) e una seconda direzionale di riempimento.
+
+In più `_tuneMaterials()` normalizza i materiali appena caricati: `envMapIntensity 1.35`, metalness limitata a 0.18 quando è 1 **senza** `metalnessMap` (specchio nero), roughness 0.85 se era 1 e senza mappa, `transparent` disattivato quando l'alpha è ≥ 0.99. (Con `metalnessMap`/`roughnessMap` presenti i fattori 1 restano: sono corretti, le mappe li modulano.)
+
 ## Shortcut Orkav
 
 | Tasto | Azione |
@@ -347,7 +415,8 @@ La scala del modello normalizza la **diagonale** del bounding box a **1.7** (non
 | `Alt+Shift+B` | background auto-cycle |
 | `Alt+W` | big text overlay |
 | `Cmd+W` | **aggiungi tag** (prompt) → cerca subito immagini + GIF |
-| `Cmd+Shift+T` | tag successivo |
+| `Cmd+Shift+T` | tag **globale** successivo (ricarica bg, GIF e 3D) |
+| `Alt+Shift+T` | tag **solo dei modelli 3D** successivo |
 | `Cmd+K` | commander |
 | `Cmd+L` | carica moduli .orca multipli |
 | `Cmd+Enter` | fullscreen |
@@ -375,10 +444,14 @@ Il rendering gira su `requestAnimationFrame`; queste sono le ottimizzazioni atti
 | **Prefetch in idle** — three.js + loader, indice Poly Haven, MediaPipe si scaricano in background dopo il boot | Alt+P / Alt+Z non aspettano più la rete |
 | **Filtro dimensione sui video** di Wikimedia/archive.org (max 12–15 MB, preferenza mp4 → webm → ogv) | niente più download da centinaia di MB che ingolfavano il decoder |
 | **Annullamento per canale** — una nuova richiesta di background/GIF annulla la precedente | niente risposte fuori ordine che sovrascrivevano il contenuto |
+| **Decode immagini off-main-thread** — `img.decode()` + `createImageBitmap` con ridimensionamento a 1600px, poi il layer disegna un `ImageBitmap` già pronto | un'immagine Commons 4000×3000 non fa più saltare il frame |
+| **Cache su disco dei modelli 3D** (`.gltf` + `.bin` + texture, TTL 30 giorni) in `userData/orkav-cache/bin/` | dal secondo caricamento lo stesso modello arriva dal disco, zero rete |
 
 Misurato con un profiler per-frame (prima → dopo): **5.4–7.1 ms → 2.4–2.7 ms per frame**, con gli fps passati da ~60 a **~80–120**.
 
 Nelle modalità con input di testo (tag, big text, ricerca 3D, commander) la UI si ridisegna ogni frame, così digitare resta immediato.
+
+Il **puntatore del mouse di sistema è nascosto** (`cursor: none` in `links/main.css`): Orkav disegna il suo cursore custom nel canvas (`client.drawCursor`) e la freccia di macOS andava a sovrapporsi.
 
 ### Rete: `Net` (`sources/scripts/lib/net.js`)
 
@@ -386,8 +459,10 @@ Tutto il traffico del renderer passa da qui: `Net.fetch/json/bytes` applicano un
 
 > `localStorage` su origine `file://` **non viene scritto su disco** in Electron: la cache affidabile è il file in `userData/orkav-cache/<chiave>.json`, scritto in modo atomico via IPC. `localStorage` resta solo come livello veloce di sessione.
 
-- `netstats` — contatori (`ok / timeout / annullate / errori / in corso`) e stato della cache
+- `netstats` — contatori (`ok / timeout / annullate / errori / in corso`), stato della cache indice e **dimensione della cache modelli su disco**
 - `netcache` — svuota la cache di rete (l'indice viene riscaricato al prossimo Alt+P)
+
+La cache binaria ha un limite di sicurezza di 40 MB per file e scrive in modo atomico (tmp + rename) in `userData/orkav-cache/bin/`.
 
 ### Prefetch in background (`sources/scripts/prefetch.js`)
 

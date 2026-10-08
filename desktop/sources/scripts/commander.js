@@ -1,4 +1,21 @@
 'use strict'
+// Imposta il tag di UN canale ('bg' | 'gif' | 'model' | 'font') e ricarica solo
+// quello. Usato dai comandi tagbg:/taggif:/tag3d:/tagfont:.
+function commanderSetTag (client, kind, p) {
+  const tag = (p && p.str ? p.str : '').trim().toLowerCase()
+  if (!client.setTagFor(kind, tag || null)) { return }
+  if (tag) {
+    if (!client.background.commonsTags[tag]) { client.background.commonsTags[tag] = [tag] }
+    if (client.tags.indexOf(tag) < 0) { client.tags.push(tag) }
+  }
+  if (kind === 'bg') { client.background.loadBackgroundByTag(client.tagFor('bg')) }
+  else if (kind === 'gif') { client.background.loadSwarmByTag(client.tagFor('gif')) }
+  else if (kind === 'model') { if (client.model3d && client.model3d.active) { client.model3d.loadRandom() } }
+  console.log('Commander', 'tag ' + kind + ':', client.tagFor(kind), tag ? '' : '(torna al globale)')
+  client._modsNotice = { names: ['tag ' + kind + ': ' + client.tagFor(kind)], until: performance.now() + 4000 }
+  client.update()
+}
+
 function Commander (client) {
   this.isActive = false; this.query = ''; this.history = []; this.historyIndex = 0
   this.passives = {
@@ -206,8 +223,14 @@ function Commander (client) {
         console.log('Commander', v
           ? ` cache Poly Haven: ${n} modelli, ${Math.round(age / 3600000)}h fa`
           : ' cache Poly Haven: vuota (verrà scaricata al primo Alt+P)')
-        client._modsNotice = { names: ['net ok:' + s.ok + ' to:' + s.timeout, v ? 'cache ' + n : 'cache vuota'], until: performance.now() + 5000 }
-        client.update()
+        const done = (sz) => {
+          if (sz) { console.log('Commander', ` cache modelli su disco: ${sz.files} file, ${(sz.bytes / 1048576).toFixed(1)} MB`) }
+          client._modsNotice = { names: ['net ok:' + s.ok + ' to:' + s.timeout, v ? 'cache ' + n : 'cache vuota', sz ? (sz.bytes / 1048576).toFixed(1) + 'MB 3d' : ''], until: performance.now() + 5000 }
+          client.update()
+        }
+        if (window.api && window.api.cache && window.api.cache.size) {
+          window.api.cache.size().then(done).catch(() => done(null))
+        } else { done(null) }
       })
     },
     // netcache → svuota la cache su disco (indice Poly Haven ecc.)
@@ -275,9 +298,26 @@ function Commander (client) {
       const tag = p.str.trim().toLowerCase()
       if (!tag) { console.warn('[Commander] Specifica un tag (es. tag:pokemon)'); return }
       client.currentTag = tag
-      client.background.loadBackgroundByTag(tag)
-      client.background.loadSwarmByTag(tag)
-      console.log('[Commander] Tag cambiato:', tag)
+      client.background.loadBackgroundByTag(client.tagFor('bg'))
+      client.background.loadSwarmByTag(client.tagFor('gif'))
+      if (client.model3d && client.model3d.active) { client.model3d.loadRandom() }
+      console.log('[Commander] Tag globale:', tag, '|', client.tagSummary())
+    },
+    // Tag PER CANALE: le GIF, il background, i modelli 3D e i font possono
+    // pescare da tag diversi. Vuoto = torna a seguire il tag globale.
+    tagbg: (p) => commanderSetTag(client, 'bg', p),
+    taggif: (p) => commanderSetTag(client, 'gif', p),
+    tag3d: (p) => commanderSetTag(client, 'model', p),
+    tagfont: (p) => commanderSetTag(client, 'font', p),
+    tags: () => {
+      console.log('Commander', '=== TAG PER CANALE ===')
+      console.log('Commander', ' globale:', client.currentTag)
+      console.log('Commander', ' bg   :', client.tagFor('bg'), client.tagBy.bg ? '(override)' : '')
+      console.log('Commander', ' gif  :', client.tagFor('gif'), client.tagBy.gif ? '(override)' : '')
+      console.log('Commander', ' 3d   :', client.tagFor('model'), client.tagBy.model ? '(override)' : '')
+      console.log('Commander', ' font :', client.tagFor('font'), client.tagBy.font ? '(override)' : '')
+      client._modsNotice = { names: ['tag ' + client.tagSummary().slice(0, 24)], until: performance.now() + 5000 }
+      client.update()
     },
     text: (p, origin) => {
       const text = p.str || p._str || ''

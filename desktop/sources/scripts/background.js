@@ -76,13 +76,22 @@ Background.prototype.setLocalDir = function (d) {
   return this.localDir
 }
 
+// Chiave-tag per un canale ('bg' immagini, 'gif' stormo). Se il canale ha un
+// tag proprio (impostato con tagbg:/taggif:) e quel tag esiste nella tabella,
+// lo usa; altrimenti pesca a caso come prima.
+Background.prototype.tagKeyFor = function (kind) {
+  const t = (this.client && this.client.tagFor) ? this.client.tagFor(kind || 'bg') : null
+  if (t && this.commonsTags && this.commonsTags[t]) { return t }
+  return this.pickTagKey()
+}
+
 Background.prototype.pickTagKey = function () {
   const keys = this.tagKeys || Object.keys(this.commonsTags || {})
   return keys[Math.floor(Math.random() * keys.length)] || 'storia'
 }
 
-Background.prototype.pickTag = function () {
-  const key = this.pickTagKey()
+Background.prototype.pickTag = function (kind) {
+  const key = this.tagKeyFor(kind || 'bg')
   const entry = this.commonsTags ? this.commonsTags[key] : null
   if (!entry) { return key }
   if (typeof entry === 'string') { return entry }
@@ -91,6 +100,7 @@ Background.prototype.pickTag = function () {
 
 // --- METODI PER TAG ---
 Background.prototype.loadBackgroundByTag = function(tag) {
+  tag = tag || this.tagKeyFor('bg')
   const entry = this.commonsTags[tag]
   if (!entry) { this.loadBackground(); return }
   const searchTerm = Array.isArray(entry) ? entry[Math.floor(Math.random() * entry.length)] : entry
@@ -98,6 +108,7 @@ Background.prototype.loadBackgroundByTag = function(tag) {
 }
 
 Background.prototype.loadSwarmByTag = function(tag) {
+  tag = tag || this.tagKeyFor('gif')
   const entry = this.commonsTags[tag]
   if (!entry) { this.loadSwarm(); return }
   const searchTerm = Array.isArray(entry) ? entry[Math.floor(Math.random() * entry.length)] : entry
@@ -142,7 +153,7 @@ Background.prototype.loadSwarm = async function () {
 }
 
 Background.prototype.tryNextGifSource = function () {
-  const en = this.commonsTags[this.pickTagKey()]
+  const en = this.commonsTags[this.tagKeyFor('gif')]
   const enTag = Array.isArray(en) ? en[0] : (en || 'art')
   // Giphy PRIMARIA (GIF piccole fixed_height_small, decodifica nativa browser).
   // Commons solo fallback. Le key pubbliche Giphy possono dare 429 → fallback.
@@ -221,7 +232,9 @@ Background.prototype.initSwarm = function () {
   const img = this.gifHost
   const W = this.client.el.width; const H = this.client.el.height
   const boids = []
-  const cx = W * (0.3 + Math.random() * 0.4); const cy = H * (0.3 + Math.random() * 0.4)
+  // Zona assegnata dall'allocatore di slot: lo stormo non nasce al centro
+  const slot = (this.client && this.client.nextSlot) ? this.client.nextSlot() : { x: 0.35 + Math.random() * 0.3, y: 0.35 + Math.random() * 0.3 }
+  const cx = W * slot.x; const cy = H * slot.y
   for (let i = 0; i < 17; i++) { boids.push({ x: cx + (Math.random() - 0.5) * 350, y: cy + (Math.random() - 0.5) * 250, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 }) }
   this.swarm = { img: img, boids: boids, start: performance.now(), nextTeleport: Date.now() + 6000 + Math.random() * 8000 }
 }
@@ -229,7 +242,9 @@ Background.prototype.initSwarm = function () {
 Background.prototype.initSwarmFrames = function (g) {
   const W = this.client.el.width; const H = this.client.el.height
   const boids = []
-  const cx = W * (0.3 + Math.random() * 0.4); const cy = H * (0.3 + Math.random() * 0.4)
+  // Zona assegnata dall'allocatore di slot: lo stormo non nasce al centro
+  const slot = (this.client && this.client.nextSlot) ? this.client.nextSlot() : { x: 0.35 + Math.random() * 0.3, y: 0.35 + Math.random() * 0.3 }
+  const cx = W * slot.x; const cy = H * slot.y
   for (let i = 0; i < 17; i++) { boids.push({ x: cx + (Math.random() - 0.5) * 350, y: cy + (Math.random() - 0.5) * 250, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 }) }
   this.swarm = { frames: g.frames, width: g.width, height: g.height, boids: boids, start: performance.now(), nextTeleport: Date.now() + 6000 + Math.random() * 8000 }
 }
@@ -333,7 +348,7 @@ Background.prototype.fetchCommons = function (tag, kind) {
 }
 
 Background.prototype.fetchArchive = function () {
-  const tag = this.pickTag()
+  const tag = this.pickTag('bg')
   const wantVideo = Math.random() > 0.6
   const mt = wantVideo ? 'movies' : 'image'
   const q = encodeURIComponent(`subject:(${tag}) AND mediatype:(${mt})`)
@@ -363,7 +378,7 @@ Background.prototype.fetchArchive = function () {
       else if (imgs.length) { this.addLayerFromUrl('https://archive.org/download/' + id + '/' + encodeURIComponent(imgs[Math.floor(Math.random() * imgs.length)].name)) }
       else { throw new Error('no files') }
     })
-  }).catch(() => { this.addLayerFromUrl('https://picsum.photos/seed/' + this.pickTag() + Math.floor(Math.random() * 1000) + '/960/720') })
+  }).catch(() => { this.addLayerFromUrl('https://picsum.photos/seed/' + this.pickTag('bg') + Math.floor(Math.random() * 1000) + '/960/720') })
 }
 
 Background.prototype.loadBackground = async function () {
@@ -387,14 +402,55 @@ Background.prototype.loadBackground = async function () {
   const n = Math.random() < 0.5 ? 1 : 1 + Math.floor(Math.random() * 7)
   for (let i = 0; i < n; i++) {
     const r = Math.random()
-    if (r < 0.45) { this.fetchCommons(this.pickTag(), 'img') }
-    else if (r < 0.75) { this.fetchCommons(this.pickTag(), 'video') }
+    if (r < 0.45) { this.fetchCommons(this.pickTag('bg'), 'img') }
+    else if (r < 0.75) { this.fetchCommons(this.pickTag('bg'), 'video') }
     else { this.fetchArchive() }
   }
 }
 
-Background.prototype.addLocalImg = function (url) { const img = new Image(); img.onload = () => { this.addLayer(img) }; img.src = url }
-Background.prototype.addLayerFromUrl = function (src) { const img = new Image(); img.crossOrigin = 'anonymous'; img.onload = () => { this.addLayer(img) }; img.onerror = () => { this.fetchArchive() }; img.src = src }
+// DECODE OFF-MAIN-THREAD.
+// Un'immagine della Commons può essere 4000×3000: il primo drawImage la
+// decodifica sul main thread e il frame salta (era uno dei "blocchi" percepiti
+// quando si carica roba dal web). `img.decode()` sposta la decodifica fuori dal
+// main thread, e `createImageBitmap` la trasferisce in un ImageBitmap
+// ridimensionato — che poi si disegna senza lavoro aggiuntivo.
+Background.prototype._decodeOffThread = async function (img, maxW) {
+  try { if (img.decode) { await img.decode() } } catch (e) {}
+  try {
+    if (!window.createImageBitmap) { return img }
+    const w = img.naturalWidth || 0; const h = img.naturalHeight || 0
+    if (!w || !h) { return img }
+    const lim = maxW || 1600
+    if (w > lim) {
+      const s = lim / w
+      return await createImageBitmap(img, {
+        resizeWidth: Math.max(1, Math.round(w * s)),
+        resizeHeight: Math.max(1, Math.round(h * s)),
+        resizeQuality: 'medium'
+      })
+    }
+    return await createImageBitmap(img)
+  } catch (e) {
+    return img   // fallback: l'<img> originale (come prima)
+  }
+}
+
+// Larghezza/altezza valide sia per <img> sia per ImageBitmap
+Background.prototype._imgW = function (img) { return img ? (img.naturalWidth || img.width || 0) : 0 }
+Background.prototype._imgH = function (img) { return img ? (img.naturalHeight || img.height || 0) : 0 }
+
+Background.prototype.addLocalImg = function (url) {
+  const img = new Image()
+  img.onload = () => { this._decodeOffThread(img).then((b) => this.addLayer(b)) }
+  img.src = url
+}
+Background.prototype.addLayerFromUrl = function (src) {
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  img.onload = () => { this._decodeOffThread(img).then((b) => this.addLayer(b)) }
+  img.onerror = () => { this.fetchArchive() }
+  img.src = src
+}
 Background.prototype.makeSpeed = function () {
   const r = Math.random(); let v
   if (r < 0.35) { v = 30 + Math.random() * 60 } else if (r < 0.75) { v = 120 + Math.random() * 160 } else { v = 350 + Math.random() * 450 }
@@ -415,7 +471,8 @@ Background.prototype.addVideoLayer = function (url) {
     // Assegna un canale MIDI al layer (round-robin 0-15) o usa quello MIDI forzato
     const ch = (this.pendingMidiChannel != null) ? this.pendingMidiChannel : this._nextMidiChannel()
     this.pendingMidiChannel = null
-    this.layers.push({ type: 'video', midiChannel: ch, img: v, x: Math.random() * W, y: Math.random() * H, w: v.videoWidth * scale, h: v.videoHeight * scale, vx: vx, vy: (Math.random() - 0.5) * 70, jx: 0, jy: 0, flick: 0, fast: Math.abs(vx) > 300 })
+    const _sv = (this.client && this.client.nextSlot) ? this.client.nextSlot() : { x: Math.random(), y: Math.random() }
+    this.layers.push({ type: 'video', midiChannel: ch, img: v, x: _sv.x * W, y: _sv.y * H, w: v.videoWidth * scale, h: v.videoHeight * scale, vx: vx, vy: (Math.random() - 0.5) * 70, jx: 0, jy: 0, flick: 0, fast: Math.abs(vx) > 300 })
     while (this.layers.length > (this.maxLayers || 7)) { const old = this.layers.shift(); if (old.type === 'video') { old.img.pause() } }
     this.mode = 'layers'; v.play().catch(() => {})
   }
@@ -423,16 +480,20 @@ Background.prototype.addVideoLayer = function (url) {
   v.src = url
 }
 Background.prototype.addLayer = function (img) {
-  if (!img.naturalWidth) { return }
+  // `img` può essere un <img> o un ImageBitmap (decode off-main-thread):
+  // ImageBitmap non ha naturalWidth/naturalHeight, ma ha width/height.
+  const iw = this._imgW(img); const ih = this._imgH(img)
+  if (!iw || !ih) { return }
   const W = this.client.el.width; const H = this.client.el.height
   // Usa pendingSize se impostato da MIDI, altrimenti scala casuale
   const basePct = this.pendingSize != null ? this.pendingSize : (0.25 + Math.random() * 0.45)
   this.pendingSize = null; // consuma il valore
-  const scale = basePct * H / img.naturalHeight
+  const scale = basePct * H / ih
   const vx = this.makeSpeed()
   const ch = (this.pendingMidiChannel != null) ? this.pendingMidiChannel : this._nextMidiChannel()
   this.pendingMidiChannel = null
-  this.layers.push({ type: 'img', midiChannel: ch, img: img, x: Math.random() * W, y: Math.random() * H, w: img.naturalWidth * scale, h: img.naturalHeight * scale, vx: vx, vy: (Math.random() - 0.5) * 70, jx: 0, jy: 0, flick: 0, fast: Math.abs(vx) > 300 })
+  const _s = (this.client && this.client.nextSlot) ? this.client.nextSlot() : { x: Math.random(), y: Math.random() }
+  this.layers.push({ type: 'img', midiChannel: ch, img: img, x: _s.x * W, y: _s.y * H, w: iw * scale, h: ih * scale, vx: vx, vy: (Math.random() - 0.5) * 70, jx: 0, jy: 0, flick: 0, fast: Math.abs(vx) > 300 })
   while (this.layers.length > (this.maxLayers || 7)) { const old = this.layers.shift(); if (old.type === 'video') { old.img.pause() } }
   this.mode = 'layers'
   if (this.video) { this.video.pause() }
@@ -613,8 +674,9 @@ Background.prototype.onMidiNote = function (channel, note, velocity) {
     const L = this.layers[i];
     if (L.midiChannel === channel) {
       // Velocity → dimensione immediata del layer esistente
-      const scale = size * H / (L.img.naturalHeight || L.h || H);
-      L.w = (L.img.naturalWidth || L.w) * scale;
+      const _lh = this._imgH(L.img) || L.h || H
+      const scale = size * H / _lh
+      L.w = (this._imgW(L.img) || L.w) * scale;
       L.h = size * H;
       // Cambia immagine: carichiamo una nuova dal tag (nota → tag)
       const tagKey = this.tagKeys[(note + channel * 3) % this.tagKeys.length];

@@ -28,7 +28,10 @@ contextBridge.exposeInMainWorld('api', {
   cache: {
     get: (key) => ipcRenderer.invoke('cache:get', key),
     set: (key, value) => ipcRenderer.invoke('cache:set', { key, value }),
-    del: (key) => ipcRenderer.invoke('cache:del', key)
+    del: (key) => ipcRenderer.invoke('cache:del', key),
+    getBin: (key) => ipcRenderer.invoke('cache:getBin', key),
+    setBin: (key, data) => ipcRenderer.invoke('cache:setBin', { key, data }),
+    size: () => ipcRenderer.invoke('cache:size')
   },
   systeminformation: {
     onUpdate: (callback) => ipcRenderer.on('systeminfo:update', (event, data) => callback(data))

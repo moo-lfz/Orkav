@@ -19,10 +19,10 @@ Ogni `*.frag` in `desktop/sources/shaders/` viene caricato automaticamente all'a
 | `fractal` | `Alt+R` | Mandelbrot/Julia audio-reattivo |
 | `displace` | `Alt+S` | displacement map: il feed spostato da una mappa di rumore |
 | `chromawarp` | `Alt+N` | curvatura cromatica: le componenti RGB si curvano separatamente |
-| `fracture` | `Alt+Q` | fratture: il frame si spezza in lastre |
+| `fracture` | `Alt+Q` | **vetro infranto**: shard Worley, rifrazione per-shard, dispersione cromatica, crepe e caustiche |
 | `glow` | `Alt+L` | bagliore neon con bloom |
-| `freezeloop` | `Alt+F` | **congela parti dello schermo e le fa rottare in loop di pixel** |
-| `bubble` | `Alt+E` | **bolle iridescenti lucide (shiny glow) con rifrazione** |
+| `freezeloop` | `Alt+F` | **congela parti dello schermo e le fa ruotare in loop di pixel** |
+| `bubble` | `Alt+E` | **schiuma di sapone**: Worley a 2 ottave, pellicole traslucide che deformano il feed |
 | `copy` | — | shader di servizio (pass-through usato dal motore) |
 
 ### `ameba` (Alt+K)
@@ -42,12 +42,38 @@ scansione verticale. **Tutto il movimento vive sull'asse X**: nessuna caduta ver
    (non satura a bianco, non muore a nero) e una leggera rotazione di tinta lo fa "girare".
 5. Bordo luminoso sui blocchi ghiacciati, brina/vetro sopra, bagliore al centro del vortice.
 
-### `bubble` (Alt+E)
-Campo di bolle su celle con **centri jitterati** che vagano lentamente. Ogni bolla:
-**rifrange** il feed come una lente sferica, ha **aberrrazione cromatica radiale**,
-un **bordo iridescente thin-film** (`cos` a 3 fasi sull'angolo di incidenza),
-un **highlight speculare** (il tocco "shiny") e un **alone glow** che si somma al feed.
-Il raggio respira coi bassi; le alte fanno scintillare i bordi.
+### `bubble` (Alt+E) — schiuma di sapone
+Due ottave di **Worley** (`cellular2x2x2`) combinate in `min`: una massa di celle
+piccole, non più poche bolle giganti. Il numero di celle è pilotato da due dei
+parametri random (5–48 attraverso lo schermo).
+1. L'**`F2-F1`** dell'ottava vincente disegna la **rete di bordi di Plateau**, dove
+   tre celle si incontrano → giunzioni luminose e pellicole sottili.
+2. Il **gradiente** del campo cellulare (differenze finite sulla stessa base ruotata)
+   fa da **normale di superficie**: `u_tex` viene rifratto lungo di essa, con lente
+   che cresce verso il bordo e **aberrrazione cromatica a 3 tap**.
+3. Un `warp()` di **dominio** deforma tutto lo schermo: la schiuma "respira".
+4. **Iridescenza thin-film** `0.5+0.5*cos(6.2831*(spessore+vec3(0,0.33,0.67)))`, con lo
+   spessore legato alla geometria della cella: le bande di colore seguono le celle.
+5. Il corpo della pellicola resta **traslucido** (il feed si vede attraverso, tinto e
+   rifratto) con bordi bagnati, shimmer sulle alte, bloom sul flash, strobe e vignetta.
+
+Mappatura audio: bassi = rigonfiamento celle, mid = densità e turbolenza, alti =
+scintillio dei bordi, `u_flash` (+ bocca aperta) = pop/bloom, `u_drop` = scroll,
+`drive` = forza della deformazione.
+
+### `fracture` (Alt+Q) — vetro infranto
+Shard **Worley irregolari** (ricerca 3×3 con jitter da `hash`), non una griglia.
+Da `d1`/`d2` derivano bordo, bisello, glint speculare e bordo di Plateau.
+1. Ogni shard ha **rifrazione propria**: offset dal suo hash + **rotazione attorno al
+   proprio centro**.
+2. **Dispersione cromatica**: R/G/B campionati a offset diversi con separazione che
+   **cresce verso i bordi** (il vetro è più spesso lì) — è ciò che vende l'effetto vetro.
+3. Una **seconda rete cellulare fine** (celle ×2.6) disegna **crepe capillari** con
+   glow colorato via `hue()` e una **caustica** lungo le crepe.
+4. **Profondità per shard**: parallasse su spinta e rifrazione; gli shard più lontani
+   sono più scuri/desaturati.
+5. Il tempo è **quantizzato** (`tk = floor(u_time*rate)`) e solo una frazione di shard
+   "schizza" via ad ogni burst; **feedback breve** da `u_prev` per lo smear.
 
 ---
 
@@ -87,6 +113,7 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | `Alt+V` | prompt commander `fx:` |
 | `Alt+T` / `Alt+D` / `Alt+J` / `Alt+K` / `Alt+R` / `Alt+S` / `Alt+N` / `Alt+Q` / `Alt+L` | shader: brokentv / datamosh / glitch / ameba / fractal / displace / chromawarp / fracture / glow |
 | `Alt+F` / `Alt+E` | shader: freezeloop / bubble |
+| `Alt+Shift+T` | tag successivo **solo per i modelli 3D** |
 | `Alt+Shift+X` | **TOTAL GLITCH + scritta PANICO multilingua** (uscita: `Esc` o di nuovo) |
 | `Esc` | reset totale |
 
@@ -98,6 +125,7 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | `Alt+G` | stormo GIF (boids) |
 | `Alt+W` | big text overlay |
 | `Alt+Z` | webcam (attiva anche la maschera viso) |
+| `Alt+H` | maschera emoji sul viso, **glitchata dal suo shader dedicato** |
 | `Alt+H` | maschera emoji sul viso |
 | `Alt+P` | modello 3D on/off (Poly Haven di default, Thingiverse se configurato) |
 | `Alt+M` | 3D: **aggiunge** un altro modello (multi-oggetto, max 6) |
@@ -140,7 +168,9 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | `frame:0` / `skip:2` / `rewind:2` | controllo frame |
 | `midi:<n>` | seleziona il device MIDI di output (esclusivo); `midi:-1` azzera |
 | `mididevices` | elenca device MIDI con indice |
-| `tag:<nome>` | cambia il tag media corrente |
+| `tag:<nome>` | cambia il tag **globale** (bg + gif + 3D senza override) |
+| `tagbg:` `taggif:` `tag3d:` `tagfont:` | tag **per canale** (vuoto = torna al globale) |
+| `tags` | stampa i tag dei quattro canali |
 | `text:HELLO` | big text immediato |
 | `ph:<query>` | **Poly Haven** (CC0, senza token): cerca e carica un modello |
 | `phadd:<query>` | come `ph:` ma **aggiunge** invece di sostituire |
@@ -158,21 +188,6 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | `inject:nome` | inietta un modulo caricato |
 | `netstats` | contatori rete (`ok / timeout / annullate / errori / in corso`) e stato cache |
 | `netcache` | svuota la cache di rete su disco |
-
----
-
-## 4c. Rete, cache e prefetch
-
-| Termine | Significato |
-|---------|-------------|
-| **`Net`** | wrapper unico di `fetch` nel renderer (`scripts/lib/net.js`): timeout, annullamento, cache, contatori |
-| **canale** | nome logico di una richiesta (`bg-fetch`, `bg-http`, `ph-index`, `ph-files`, `tv`). `Net.begin(canale)` annulla la richiesta precedente dello stesso canale |
-| **richiesta `quiet`** | richiesta di background (prefetch): non entra in `Net.busy()` né nell'indicatore di caricamento |
-| **`Net.stale(canale, signal)`** | true se nel frattempo il canale è stato rilanciato: la risposta vecchia va ignorata invece di sovrascrivere quella nuova |
-| **cache su disco** | `userData/orkav-cache/<chiave>.json`, scrittura atomica (tmp + rename) via IPC. `localStorage` su `file://` **non persiste** in Electron, quindi non basta |
-| **TTL** | vita della cache: l'indice Poly Haven dura 7 giorni |
-| **prefetch** | riscaldamento in background (`scripts/prefetch.js`): parte 2.5 s dopo il boot, una risorsa alla volta, solo in idle |
-| **indicatore di caricamento** | `\| 3D props` / `/ net 2` a sinistra della telemetria di Orkav, sparisce dopo 10 s |
 
 ---
 
@@ -202,6 +217,45 @@ I tag pilotano background, GIF e modelli 3D (`Cmd+Shift+T` per ciclare, `Cmd+W` 
 `cyberfeminism`, `cyberdeck`, `hacktivism`, `hacker`, `matrix`, `red pill`, `blue pill`,
 `sex workers`, `demons`, `lucifer`, `satan`, `esoterism`, `ai`, `ki`, `solar opposites`,
 `brickleberry`, `futurama`
+
+---
+
+## 4c. Rete, cache e prefetch
+
+| Termine | Significato |
+|---------|-------------|
+| **`Net`** | wrapper unico di `fetch` nel renderer (`scripts/lib/net.js`): timeout, annullamento, cache, contatori |
+| **canale** | nome logico di una richiesta (`bg-fetch`, `bg-http`, `ph-index`, `ph-files`, `tv`). `Net.begin(canale)` annulla la richiesta precedente dello stesso canale |
+| **richiesta `quiet`** | richiesta di background (prefetch): non entra in `Net.busy()` né nell'indicatore di caricamento |
+| **`Net.stale(canale, signal)`** | true se nel frattempo il canale è stato rilanciato: la risposta vecchia va ignorata invece di sovrascrivere quella nuova |
+| **cache su disco** | `userData/orkav-cache/<chiave>.json`, scrittura atomica (tmp + rename) via IPC. `localStorage` su `file://` **non persiste** in Electron, quindi non basta |
+| **TTL** | vita della cache: l'indice Poly Haven dura 7 giorni |
+| **prefetch** | riscaldamento in background (`scripts/prefetch.js`): parte 2.5 s dopo il boot, una risorsa alla volta, solo in idle |
+| **indicatore di caricamento** | `\| 3D props` / `/ net 2` a sinistra della telemetria di Orkav, sparisce dopo 10 s |
+
+---
+
+## 4d. Maschera facciale e shader dedicato
+
+| Termine | Significato |
+|---------|-------------|
+| **MaskFX** | pipeline WebGL2 separata (`scripts/mask-fx.js`) che glitcha l'emoticon **prima** che finisca nel feed. 256×256 **con alpha**, così la maschera continua a ritagliare il viso |
+| **`shaders/mask/glitch.frag`** | lo shader delle emoticon. Sta in una **sottocartella** apposta: la catena FX carica solo i `.frag` di primo livello, quindi non compare fra gli shader selezionabili |
+| **slice displace** | bande orizzontali spostate a scatti, quantizzate nel tempo (`floor(u_time*rate)`) |
+| **rim neon** | bordo luminoso ricavato dall'alpha, con hue che ruota |
+| **seed per emoticon** | ogni swap chiama `reseed()`: ogni emoticon ha il **suo** pattern di glitch |
+| **rasterizzazione on demand** | le 110 emoji restano **stringhe**; il canvas 256×256 si crea la prima volta che serve, con cache LRU di 24 (prima: 110 canvas 512×512 = ~115 MB in un solo frame) |
+
+---
+
+## 4e. Slot dello schermo
+
+| Termine | Significato |
+|---------|-------------|
+| **slot** | una delle 12 zone **periferiche** di `client.slotList` (coordinate normalizzate). Serve a non impilare tutto al centro, dove sta la patch Orca |
+| **`nextSlot()`** | restituisce la prossima zona a rotazione, con partenza casuale |
+| **`resetSlots()`** | riparte da una zona casuale: chiamato da `Alt+P` |
+| **chi li usa** | layer immagine, spawn dello stormo GIF, centro di oscillazione dei modelli 3D |
 
 ---
 

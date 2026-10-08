@@ -10,7 +10,7 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 4 0 R >>
 endobj
 4 0 obj
-<< /Length 6303 >>
+<< /Length 6368 >>
 stream
 0.0 0.0 0.0 rg 0 0 595 842 re f
 0.04 0.04 0.04 rg 0 772 595 70 re f
@@ -46,134 +46,146 @@ BT 0.29 0.87 0.5 rg /F2 9 Tf 48 547 Td (Alt+S) Tj ET
 BT 0.92 0.92 0.92 rg /F1 9 Tf 190 547 Td (displace) Tj ET
 BT 0.29 0.87 0.5 rg /F2 9 Tf 48 533 Td (Alt+N) Tj ET
 BT 0.92 0.92 0.92 rg /F1 9 Tf 190 533 Td (chromawarp) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 519 Td (Alt+Q) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 519 Td (fracture) Tj ET
+BT 0.7 0.61 1.0 rg /F2 9 Tf 48 519 Td (Alt+Q) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 519 Td (fracture ? vetro infranto: shard, dispersione, crepe) Tj ET
 BT 0.29 0.87 0.5 rg /F2 9 Tf 48 505 Td (Alt+L) Tj ET
 BT 0.92 0.92 0.92 rg /F1 9 Tf 190 505 Td (glow ? bagliore neon) Tj ET
 BT 0.7 0.61 1.0 rg /F2 9 Tf 48 491 Td (Alt+F) Tj ET
 BT 0.92 0.92 0.92 rg /F1 9 Tf 190 491 Td (freezeloop ? blocchi congelati in loop di pixel) Tj ET
 BT 0.7 0.61 1.0 rg /F2 9 Tf 48 477 Td (Alt+E) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 477 Td (bubble ? bolle iridescenti shiny glow) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 477 Td (bubble ? SCHIUMA: pellicole che deformano il feed) Tj ET
 BT 1.0 0.3 0.3 rg /F2 9 Tf 48 463 Td (fx: vuoto) Tj ET
 BT 0.92 0.92 0.92 rg /F1 9 Tf 190 463 Td (spegne la chain) Tj ET
 BT 1.0 0.71 0.27 rg /F2 13 Tf 40 443 Td (CAMERA · FACE TRACKING · 3D) Tj ET
 1.0 0.71 0.27 RG 0.5 w 40 436 m 200 436 l S
 BT 0.29 0.87 0.5 rg /F2 9 Tf 48 421 Td (Alt+Z) Tj ET
 BT 0.92 0.92 0.92 rg /F1 9 Tf 190 421 Td (webcam come feed \(attiva anche la maschera viso\)) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 407 Td (Alt+H) Tj ET
+BT 0.7 0.61 1.0 rg /F2 9 Tf 48 407 Td (Alt+H) Tj ET
 BT 0.92 0.92 0.92 rg /F1 9 Tf 190 407 Td (maschera emoji sul viso \(468 landmark MediaPipe\)) Tj ET
 BT 0.29 0.87 0.5 rg /F2 9 Tf 48 393 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 393 Td (? bocca/occhi/testa/rotazione pilotano gli shader) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 379 Td (Alt+P) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 379 Td (modello 3D ? segue il tag corrente, nessun setup) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 365 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 365 Td (? Poly Haven: 520+ modelli CC0, API pubblica senza token) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 393 Td (? ogni emoticon ha il SUO shader glitch, sempre attivo) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 379 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 379 Td (? bocca/occhi/testa/rotazione pilotano gli shader) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 365 Td (Alt+P) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 365 Td (modello 3D ? segue il tag corrente, nessun setup) Tj ET
 BT 0.29 0.87 0.5 rg /F2 9 Tf 48 351 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 351 Td (? opzionale Thingiverse: tvtoken:<TOKEN> \(serve approvazione\)) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 351 Td (? Poly Haven: 520+ modelli CC0, API pubblica senza token) Tj ET
 BT 0.29 0.87 0.5 rg /F2 9 Tf 48 337 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 337 Td (? formati GLB/glTF, STL, OBJ, deformazione audio-reattiva) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 337 Td (? opzionale Thingiverse: tvtoken:<TOKEN> \(serve approvazione\)) Tj ET
 BT 0.29 0.87 0.5 rg /F2 9 Tf 48 323 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 323 Td (? vaga per tutto lo schermo \(non resta al centro\)) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 309 Td (Alt+M) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 309 Td (aggiungi un altro modello \(multi-oggetto\)) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 295 Td (Alt+Shift+P) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 295 Td (cerca modello: digita un termine + Enter) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 281 Td (Alt+C) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 281 Td (GLOSSY / chrome on/off \(riflessi lucidi\)) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 267 Td (Alt+Shift+C) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 267 Td (svuota tutti i modelli) Tj ET
-BT 1.0 0.71 0.27 rg /F2 13 Tf 40 247 Td (TOTAL GLITCH & PANICO) Tj ET
-1.0 0.71 0.27 RG 0.5 w 40 240 m 200 240 l S
-BT 1.0 0.3 0.3 rg /F2 9 Tf 48 225 Td (Alt+Shift+X) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 225 Td (TOTAL GLITCH ? distrugge feed + patch + terminale) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 211 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 211 Td (? BPM random 0-999 molto veloce + scritta PANICO multilingua) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 197 Td (Esc) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 197 Td (esce dal glitch e ripristina tutto) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 183 Td (Alt+Shift+X) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 183 Td (di nuovo: esce anche lui) Tj ET
-BT 1.0 0.71 0.27 rg /F2 13 Tf 40 163 Td (CONTENUTO VISIVO \(il feed degli shader\)) Tj ET
-1.0 0.71 0.27 RG 0.5 w 40 156 m 200 156 l S
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 141 Td (Alt+B) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 141 Td (background random dal tag corrente) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 127 Td (Alt+G) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 127 Td (stormo GIF boids) Tj ET
-BT 1.0 0.06 0.94 rg /F2 9 Tf 48 113 Td (Alt+W) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 113 Td (big text overlay \(max 4\) ? auto-fit + font dafont) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 99 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 99 Td (? resta ~300ms/carattere \(min 6s\) per leggerlo tutto) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 85 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 85 Td (? moto casuale: tutto intero / corre in orizzontale) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 323 Td (? formati GLB/glTF, STL, OBJ, deformazione audio-reattiva) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 309 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 309 Td (? ogni modello ha la SUA zona: niente collisioni al centro) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 295 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 295 Td (? luce ambiente + tonemapping: niente più modelli scuri) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 281 Td (Alt+M) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 281 Td (aggiungi un altro modello \(multi-oggetto\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 267 Td (Alt+Shift+P) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 267 Td (cerca modello: digita un termine + Enter) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 253 Td (Alt+C) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 253 Td (GLOSSY / chrome on/off \(riflessi lucidi\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 239 Td (Alt+Shift+C) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 239 Td (svuota tutti i modelli) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 219 Td (TOTAL GLITCH & PANICO) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 212 m 200 212 l S
+BT 1.0 0.3 0.3 rg /F2 9 Tf 48 197 Td (Alt+Shift+X) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 197 Td (TOTAL GLITCH ? distrugge feed + patch + terminale) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 183 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 183 Td (? BPM random 0-999 molto veloce + scritta PANICO multilingua) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 169 Td (Esc) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 169 Td (esce dal glitch e ripristina tutto) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 155 Td (Alt+Shift+X) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 155 Td (di nuovo: esce anche lui) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 135 Td (CONTENUTO VISIVO \(il feed degli shader\)) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 128 m 200 128 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 113 Td (Alt+B) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 113 Td (background random dal tag corrente) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 99 Td (Alt+G) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 99 Td (stormo GIF boids) Tj ET
+BT 1.0 0.06 0.94 rg /F2 9 Tf 48 85 Td (Alt+W) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 85 Td (big text overlay \(max 4\) ? auto-fit + font dafont) Tj ET
 endstream
 endobj
 5 0 obj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 6 0 R >>
 endobj
 6 0 obj
-<< /Length 4652 >>
+<< /Length 5556 >>
 stream
 0.0 0.0 0.0 rg 0 0 595 842 re f
 0.04 0.04 0.04 rg 0 802 595 40 re f
 BT 0.29 0.87 0.5 rg /F2 10 Tf 40 816 Td (ORKAV ? QUICK START GUIDE \(continua\)) Tj ET
 0.7 0.61 1.0 RG 1 w 40 797 m 555 797 l S
 BT 0.29 0.87 0.5 rg /F2 9 Tf 48 772 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 772 Td (  / entra da sopra o sotto / diagonale / ibrido) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 758 Td (Cmd+Shift+T) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 758 Td (cambia tag) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 744 Td (Cmd+W) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 744 Td (aggiungi tag e cerca subito immagini + GIF) Tj ET
-BT 1.0 0.71 0.27 rg /F2 13 Tf 40 724 Td (MIDI ? tutti i canali in ascolto) Tj ET
-1.0 0.71 0.27 RG 0.5 w 40 717 m 200 717 l S
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 702 Td (nota ON) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 702 Td (bg: cambia img/video | gif: swarm | bigtext: scritta) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 688 Td (velocity) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 688 Td (dimensione bg / scala gif / flicker testo) Tj ET
-BT 1.0 0.06 0.94 rg /F2 9 Tf 48 674 Td (score Orca) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 674 Td (ogni nota generata = flash visivo sincronizzato) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 660 Td (midi:<n>) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 660 Td (seleziona output device \(mididevices li elenca\)) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 646 Td (midi:-1) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 646 Td (azzera la selezione output) Tj ET
-BT 1.0 0.71 0.27 rg /F2 13 Tf 40 626 Td (LINK / BPM / DISPLAY) Tj ET
-1.0 0.71 0.27 RG 0.5 w 40 619 m 200 619 l S
-BT 1.0 0.3 0.3 rg /F2 9 Tf 48 604 Td (BPM rosso) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 604 Td (play attivo ? Orkav sta mandando il sync Link) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 590 Td (>  lampeggia) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 590 Td (batte col sequencer \(=/+ alternati\)) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 576 Td (P<n> verde) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 576 Td (peer Ableton Link collegati) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 562 Td (C:/G:) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 562 Td (carico CPU/GPU + FPS + temperatura nel monitor) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 548 Td (| 3D props) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 548 Td (caricamento in corso \(rete/3D\) ? sparisce da solo) Tj ET
-BT 1.0 0.71 0.27 rg /F2 13 Tf 40 528 Td (SEQUENCER \(essenziale ORCA\)) Tj ET
-1.0 0.71 0.27 RG 0.5 w 40 521 m 200 521 l S
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 506 Td (Space) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 506 Td (play / pausa) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 492 Td (Cmd+K) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 492 Td (commander \(bpm:140, play, stop, find:\)) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 478 Td (Cmd+G) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 478 Td (guida operatori + lista comandi a schermo) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 464 Td (Cmd+L) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 464 Td (carica moduli .orca multipli \(inject:nome dal commander\)) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 450 Td (Cmd+Enter) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 450 Td (fullscreen) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 436 Td (Cmd+S) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 436 Td (esporta patch .orca) Tj ET
-BT 1.0 0.71 0.27 rg /F2 13 Tf 40 416 Td (RETE · CACHE · PREFETCH) Tj ET
-1.0 0.71 0.27 RG 0.5 w 40 409 m 200 409 l S
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 394 Td (netstats) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 394 Td (contatori rete \(ok/timeout/annullate\) + stato cache) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 380 Td (netcache) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 380 Td (svuota la cache su disco \(indice Poly Haven\)) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 366 Td (prefetch) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 366 Td (three.js + indice Poly Haven scaricati in background al boot) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 352 Td () Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 352 Td (? MediaPipe \(3.8 MB\) solo se la webcam e' gia' stata usata) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 338 Td (timeout) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 338 Td (ogni richiesta HTTP scade in 4-8 s: niente piu' blocchi) Tj ET
-BT 0.29 0.87 0.5 rg /F2 9 Tf 48 324 Td (video) Tj ET
-BT 0.92 0.92 0.92 rg /F1 9 Tf 190 324 Td (filtrati a max 12-15 MB, preferenza mp4 > webm > ogv) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 772 Td (? resta ~300ms/carattere \(min 6s\) per leggerlo tutto) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 758 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 758 Td (? moto casuale: tutto intero / corre in orizzontale) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 744 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 744 Td (  / entra da sopra o sotto / diagonale / ibrido) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 730 Td (Cmd+Shift+T) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 730 Td (tag GLOBALE successivo \(bg + gif + 3D\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 716 Td (Alt+Shift+T) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 716 Td (tag successivo solo per i modelli 3D) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 702 Td (Cmd+W) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 702 Td (aggiungi tag e cerca subito immagini + GIF) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 682 Td (MIDI ? tutti i canali in ascolto) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 675 m 200 675 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 660 Td (nota ON) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 660 Td (bg: cambia img/video | gif: swarm | bigtext: scritta) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 646 Td (velocity) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 646 Td (dimensione bg / scala gif / flicker testo) Tj ET
+BT 1.0 0.06 0.94 rg /F2 9 Tf 48 632 Td (score Orca) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 632 Td (ogni nota generata = flash visivo sincronizzato) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 618 Td (midi:<n>) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 618 Td (seleziona output device \(mididevices li elenca\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 604 Td (midi:-1) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 604 Td (azzera la selezione output) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 584 Td (LINK / BPM / DISPLAY) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 577 m 200 577 l S
+BT 1.0 0.3 0.3 rg /F2 9 Tf 48 562 Td (BPM rosso) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 562 Td (play attivo ? Orkav sta mandando il sync Link) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 548 Td (>  lampeggia) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 548 Td (batte col sequencer \(=/+ alternati\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 534 Td (P<n> verde) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 534 Td (peer Ableton Link collegati) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 520 Td (C:/G:) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 520 Td (carico CPU/GPU + FPS + temperatura nel monitor) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 506 Td (| 3D props) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 506 Td (caricamento in corso \(rete/3D\) ? sparisce da solo) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 486 Td (SEQUENCER \(essenziale ORCA\)) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 479 m 200 479 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 464 Td (Space) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 464 Td (play / pausa) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 450 Td (Cmd+K) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 450 Td (commander \(bpm:140, play, stop, find:\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 436 Td (Cmd+G) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 436 Td (guida operatori + lista comandi a schermo) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 422 Td (Cmd+L) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 422 Td (carica moduli .orca multipli \(inject:nome dal commander\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 408 Td (Cmd+Enter) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 408 Td (fullscreen) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 394 Td (Cmd+S) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 394 Td (esporta patch .orca) Tj ET
+BT 1.0 0.71 0.27 rg /F2 13 Tf 40 374 Td (RETE · CACHE · PREFETCH) Tj ET
+1.0 0.71 0.27 RG 0.5 w 40 367 m 200 367 l S
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 352 Td (netstats) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 352 Td (contatori rete \(ok/timeout/annullate\) + stato cache) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 338 Td (netcache) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 338 Td (svuota la cache su disco \(indice Poly Haven\)) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 324 Td (tagbg: taggif:) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 324 Td (tag per canale: bg, gif, 3D, font separati) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 310 Td (tag3d: tagfont:) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 310 Td (vuoto = torna al tag globale) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 296 Td (tags) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 296 Td (mostra i tag dei quattro canali) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 282 Td (prefetch) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 282 Td (three.js + indice Poly Haven scaricati in background al boot) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 268 Td () Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 268 Td (? MediaPipe \(3.8 MB\) solo se la webcam e' gia' stata usata) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 254 Td (timeout) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 254 Td (ogni richiesta HTTP scade in 4-8 s: niente piu' blocchi) Tj ET
+BT 0.29 0.87 0.5 rg /F2 9 Tf 48 240 Td (video) Tj ET
+BT 0.92 0.92 0.92 rg /F1 9 Tf 190 240 Td (filtrati a max 12-15 MB, preferenza mp4 > webm > ogv) Tj ET
 0.7 0.61 1.0 RG 0.5 w 40 60 m 555 60 l S
 BT 0.45 0.45 0.45 rg /F1 8 Tf 40 44 Td (ORKAV ? underground audiovisual engineering. fx:nome.rand.drive | rand = 3 parametri shader + 7 filtri spettrali | drive = audio capture) Tj ET
 BT 1.0 0.06 0.94 rg /F1 8 Tf 40 32 Td (ALT+SHIFT+X quando tutto va in fiamme. Esc per uscirne. Sempre.) Tj ET
@@ -192,12 +204,12 @@ xref
 0000000064 00000 n 
 0000000127 00000 n 
 0000000263 00000 n 
-0000006618 00000 n 
-0000006754 00000 n 
-0000011458 00000 n 
-0000011526 00000 n 
+0000006683 00000 n 
+0000006819 00000 n 
+0000012427 00000 n 
+0000012495 00000 n 
 trailer
 << /Size 9 /Root 1 0 R >>
 startxref
-11599
+12568
 %%EOF

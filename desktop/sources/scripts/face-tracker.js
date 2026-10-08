@@ -15,6 +15,9 @@ function FaceTracker (client) {
   this.ready = false        // FaceLandmarker creato
   this.active = false       // detection loop attivo
   this.loading = false
+  // Shader DEDICATO alle emoticon: le glitcha prima che finiscano nel feed.
+  // È sempre attivo quando c'è una maschera (vedi MaskFX).
+  this.maskFX = (typeof MaskFX !== 'undefined') ? new MaskFX(client) : null
   this.landmarker = null
   this.video = null         // video element webcam
   this.landmarks = null     // ultimi 468 landmark (normalizzati 0-1)
@@ -99,9 +102,14 @@ FaceTracker.prototype.start = function () {
   if (this.active) return
   this.active = true
   console.log('[FaceTracker] detection loop avviato')
+  // MediaPipe detectForVideo è la voce di costo più alta del face tracking e
+  // gira sul main thread: a 30 Hz (un frame sì e uno no) la maschera resta
+  // incollata al viso ma il render non perde più metà del frame budget.
+  this._tick = 0
   const loop = () => {
     if (!this.active) return
-    if (this.video && this.video.videoWidth) { this.detect(this.video) }
+    this._tick++
+    if (this.video && this.video.videoWidth && (this._tick & 1) === 0) { this.detect(this.video) }
     requestAnimationFrame(loop)
   }
   requestAnimationFrame(loop)
@@ -250,6 +258,13 @@ FaceTracker.prototype.toggleMask = async function () {
   this.maskOn = !this.maskOn
   if (this.maskOn) {
     await this._ensureMaskPool()
+    // Lo shader della maschera si prepara QUI, una volta sola: da ora ogni
+    // emoticon nasce già glitchata (nessun "primo frame pulito").
+    if (this.maskFX && !this.maskFX.ready && !this._maskFXInit) {
+      this._maskFXInit = true
+      // await: la PRIMA emoticon deve già uscire glitchata, non dopo un frame
+      await this.maskFX.init()
+    }
     this._selectRandomMask()
     this._startMaskSwapTimer()
     console.log('[FaceTracker] maschera ON')
@@ -262,23 +277,53 @@ FaceTracker.prototype.toggleMask = async function () {
 
 // Tutte le emoticon smile (viso). Cambio molto veloce, con freeze sui bassi
 // e freeze periodico ogni 17s.
+//
+// IMPORTANTE (bottleneck): prima qui si rasterizzavano TUTTE le ~110 emoji a
+// 512×512 all'attivazione della maschera → 110 canvas, ~115 MB di memoria e
+// ~110 fillText da 420px sincroni in un solo frame. Era quello il blocco
+// all'avvio del face tracking. Ora:
+//   - la lista resta di stringhe, i canvas si creano ON DEMAND;
+//   - cache LRU di MASK_CACHE voci (poche decine), non tutte;
+//   - lato 256 invece di 512 (la maschera sullo schermo è ~1/3 di quello).
+FaceTracker.MASK_EMOJIS = [
+  '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃',
+  '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙',
+  '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔',
+  '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌',
+  '😔', '😪', '🤤', '😴', '🥱', '😷', '🤒', '🤕', '🤢', '🤮',
+  '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓',
+  '🧐', '😕', '😟', '🙁', '😮', '😯', '😲', '😳', '🥺', '😦',
+  '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞',
+  '😓', '😩', '😫', '😤', '😡', '😠', '🤬', '😈', '👿', '💀',
+  '👻', '👽', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽',
+  '🙀', '😿', '😾', '💩', '🤡', '👺', '👹', '🥸', '🤠', '😺'
+]
+
+FaceTracker.MASK_CACHE = 24
+
 FaceTracker.prototype._ensureMaskPool = async function () {
-  if (!this.masks || !this.masks.length) {
-    const emojis = [
-      '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃',
-      '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙',
-      '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔',
-      '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌',
-      '😔', '😪', '🤤', '😴', '🥱', '😷', '🤒', '🤕', '🤢', '🤮',
-      '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓',
-      '🧐', '😕', '😟', '🙁', '😮', '😯', '😲', '😳', '🥺', '😦',
-      '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞',
-      '😓', '😩', '😫', '😤', '😡', '😠', '🤬', '😈', '👿', '💀',
-      '👻', '👽', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽',
-      '🙀', '😿', '😾', '💩', '🤡', '👺', '👹', '🥸', '🤠', '😺'
-    ]
-    this.masks = emojis.map(e => ({ img: this._makeEmoji(e), type: 'face' }))
+  if (this.masks && this.masks.length) return
+  // Solo la lista: nessun canvas ancora allocato.
+  this.masks = FaceTracker.MASK_EMOJIS.map(e => ({ emoji: e, type: 'face', img: null }))
+  this._maskCache = new Map()
+  console.log('[FaceTracker] maschere pronte (rasterizzazione on demand):', this.masks.length)
+}
+
+// Canvas dell'emoji, creato la prima volta che serve e tenuto in cache LRU.
+FaceTracker.prototype._maskCanvas = function (entry) {
+  if (entry.img) return entry.img
+  const img = this._makeEmoji(entry.emoji)
+  entry.img = img
+  if (!this._maskCache) this._maskCache = new Map()
+  this._maskCache.set(entry.emoji, entry.img)
+  while (this._maskCache.size > FaceTracker.MASK_CACHE) {
+    const k = this._maskCache.keys().next().value
+    const old = this._maskCache.get(k)
+    this._maskCache.delete(k)
+    // libera il riferimento nella entry, così può essere raccolto
+    for (const m of this.masks) { if (m.img === old) { m.img = null } }
   }
+  return img
 }
 
 FaceTracker.prototype._selectRandomMask = function () {
@@ -286,9 +331,11 @@ FaceTracker.prototype._selectRandomMask = function () {
   let idx = Math.floor(Math.random() * this.masks.length)
   if (this.masks.length > 1 && this._maskIdx === idx) { idx = (idx + 1) % this.masks.length }
   this._maskIdx = idx
-  this.maskImg = this.masks[idx].img
+  this.maskImg = this._maskCanvas(this.masks[idx])
   this.maskType = this.masks[idx].type
   this.maskReady = true
+  // Ogni emoticon ha il SUO pattern di glitch (nuovo seed ad ogni cambio).
+  if (this.maskFX) { this.maskFX.reseed() }
 }
 
 // Swap veloce con due regole di freeze:
@@ -323,16 +370,19 @@ FaceTracker.prototype._stopMaskSwapTimer = function () {
 }
 
 // Renderizza un'emoji nativa (font di sistema) su canvas trasparente.
+// 256×256 invece di 512×512: la maschera sullo schermo è ~300px, quindi 512
+// era solo memoria sprecata (110 canvas a 512 = ~115 MB).
 FaceTracker.prototype._makeEmoji = function (emoji) {
+  const S = 256
   const cv = document.createElement('canvas')
-  cv.width = 512; cv.height = 512
+  cv.width = S; cv.height = S
   const ctx = cv.getContext('2d')
-  ctx.clearRect(0, 0, 512, 512)
+  ctx.clearRect(0, 0, S, S)
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
   const fonts = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", "EmojiOne Color", sans-serif'
-  ctx.font = '420px ' + fonts
-  ctx.fillText(emoji, 256, 430)
+  ctx.font = Math.round(S * 0.82) + 'px ' + fonts
+  ctx.fillText(emoji, S / 2, Math.round(S * 0.84))
   return cv
 }
 
@@ -370,11 +420,25 @@ FaceTracker.prototype.drawMask = function (ctx, W, H) {
   }
 
   const mh = mw * (this.maskImg.height / this.maskImg.width || 1)
+  // SHADER DEDICATO ALLE EMOTICON: l'emoji passa da MaskFX (glitch sempre
+  // attivo) prima di essere disegnata. Se WebGL non è pronto si usa l'originale.
+  let src = this.maskImg
+  if (this.maskFX && this.maskFX.ready) {
+    const a = this.client && this.client.audioReactor
+    const out = this.maskFX.process(this.maskImg, {
+      bass: a ? (a.bass || 0) : 0,
+      mid: a ? (a.mid || 0) : 0,
+      high: a ? (a.high || 0) : 0,
+      vol: a ? (a.vol || 0) : 0,
+      flash: (this.client && this.client.scoreFlash) || 0
+    })
+    if (out) { src = out }
+  }
   ctx.save()
   ctx.translate(cx, cy)
   ctx.rotate(rot)
   ctx.globalAlpha = 0.92
-  ctx.drawImage(this.maskImg, -mw / 2, -mh / 2, mw, mh)
+  ctx.drawImage(src, -mw / 2, -mh / 2, mw, mh)
   ctx.restore()
   return true
 }

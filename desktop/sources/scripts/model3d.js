@@ -138,18 +138,34 @@ Model3d.prototype._buildScene = function () {
   this.renderer.setPixelRatio(1)        // niente retina: raddoppierebbe i pixel
   this.renderer.setSize(W3D, H3D, false)
   this.renderer.setClearColor(0x000000, 0)
+  // Colori corretti + tonemapping: senza questi un glTF PBR (Poly Haven)
+  // esce piatto e scuro, con le alte luci bruciate.
+  try {
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
+    this.renderer.toneMappingExposure = 1.25
+  } catch (e) {}
   this.scene = new THREE.Scene()
   this.camera = new THREE.PerspectiveCamera(45, W3D / H3D, 0.1, 100)
   this.camera.position.set(0, 1, 3)
   this.camera.lookAt(0, 0, 0)
   // luci
-  this.scene.add(new THREE.AmbientLight(0xffffff, 0.7))
-  const d = new THREE.DirectionalLight(0xffffff, 1.2)
+  this.scene.add(new THREE.AmbientLight(0xffffff, 0.85))
+  // Hemisphere = luce ambiente direzionale morbida: schiarisce le facce in ombra
+  // senza appiattire (era il motivo principale per cui i modelli restavano scuri).
+  this.scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x30303a, 1.1))
+  const d = new THREE.DirectionalLight(0xffffff, 1.6)
   d.position.set(2, 3, 4)
   this.scene.add(d)
+  const d2 = new THREE.DirectionalLight(0xbfd4ff, 0.7)   // controluce di riempimento
+  d2.position.set(-3, 1.5, -2)
+  this.scene.add(d2)
   const p = new THREE.PointLight(0x39ff14, 1.0, 20)
   p.position.set(-2, 1, 2)
   this.scene.add(p)
+  // Environment map SEMPRE attiva (non solo col glossy): i materiali PBR
+  // metallici di Poly Haven senza IBL vengono renderizzati neri.
+  this._ensureEnv()
 }
 
 // Alt+P: ON (ricarica 1 modello per il tag corrente) / OFF
@@ -158,6 +174,8 @@ Model3d.prototype.toggle = async function (tag) {
   this.active = !this.active
   if (this.active) {
     this.clearModels()
+    // Riparti da una zona diversa dello schermo ad ogni attivazione
+    if (this.client && this.client.resetSlots) { this.client.resetSlots() }
     await this.loadRandom(tag)
   } else {
     console.log('[Model3d] disattivato')
@@ -181,7 +199,7 @@ Model3d.prototype.addModel = async function (tag) {
 Model3d.prototype.loadRandom = async function (tag, opts) {
   const add = !!(opts && opts.add)
   if (!add) this.clearModels()
-  const term = tag || (this.client && this.client.currentTag) || 'low poly'
+  const term = tag || (this.client && this.client.tagFor ? this.client.tagFor('model') : null) || (this.client && this.client.currentTag) || 'low poly'
   this.status('3D ' + (add ? '+ ' : '') + term)
   if (this.tvToken) {
     const okTv = await this.loadFromThingiverse(term)
@@ -319,6 +337,45 @@ Model3d.prototype.pickPolyHaven = function (assets, term) {
   return { id: chosen, name: (assets[chosen] && assets[chosen].name) || chosen, matched: ranked.length > 0 }
 }
 
+// Scarica i file di un modello passando dalla cache BINARIA su disco e li
+// restituisce come blob URL (basename → blob:). `__hits` conta quanti sono
+// arrivati dal disco, per il log.
+Model3d.prototype._cacheModelFiles = async function (id, res, byName) {
+  const out = {}
+  let hits = 0
+  const api = window.api && window.api.cache
+  const names = Object.keys(byName)
+  if (!api || !api.getBin || !names.length) { return out }
+  const TTL = 30 * 24 * 3600 * 1000   // 30 giorni: i modelli Poly Haven non cambiano
+  const base = ('mdl_' + id + '_' + (res || '1k')).toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 40)
+  await Promise.all(names.map(async (n) => {
+    const ck = (base + '_' + n).toLowerCase().replace(/[^a-z0-9_-]/g, '_').slice(0, 64)
+    let buf = null
+    try {
+      const box = await api.getBin(ck)
+      if (box && box.b && (!box.t || (Date.now() - box.t) < TTL)) { buf = box.b; hits++ }
+    } catch (e) {}
+    if (!buf) {
+      try {
+        const res2 = await Net.fetch(byName[n], {}, 20000)
+        if (!res2.ok) { return }
+        buf = await res2.arrayBuffer()
+        if (api.setBin) { await api.setBin(ck, buf) }
+      } catch (e) { return }
+    }
+    try { out[n] = URL.createObjectURL(new Blob([buf])) } catch (e) {}
+  }))
+  out.__hits = hits
+  // Tiene traccia dei blob per poterli revocare quando il modello esce di scena
+  if (!this._blobUrls) this._blobUrls = []
+  for (const k of names) { if (out[k]) { this._blobUrls.push(out[k]) } }
+  while (this._blobUrls.length > 160) {   // ~20 modelli in cache di blob
+    const u = this._blobUrls.shift()
+    try { URL.revokeObjectURL(u) } catch (e) {}
+  }
+  return out
+}
+
 // Carica un modello Poly Haven (glTF multi-file risolto via tabella `include`)
 Model3d.prototype.loadFromPolyHaven = async function (term, res) {
   try {
@@ -342,12 +399,21 @@ Model3d.prototype.loadFromPolyHaven = async function (term, res) {
       const base = decodeURIComponent(String(k).split('/').pop())
       if (include[k] && include[k].url) byName[base] = include[k].url
     }
+
+    // CACHE SU DISCO DEI FILE DEL MODELLO (.gltf + .bin + texture).
+    // Il primo caricamento li scarica e li salva in userData/orkav-cache/bin/;
+    // dal secondo in poi sono letti dal disco (nessuna rete). I byte vengono
+    // esposti come blob URL, così il modifier resta sincrono.
+    this.status('3D ' + pick.id)
+    const cached = await this._cacheModelFiles(pick.id, wanted, byName)
     const modifier = (u) => {
       const base = decodeURIComponent(String(u).split('/').pop().split('?')[0])
-      return byName[base] || u
+      return cached[base] || byName[base] || u
     }
+    this._lastBlobUrls = null
 
-    console.log('[Model3d] Poly Haven glTF:', entry.url, '| risorse:', Object.keys(byName).length)
+    console.log('[Model3d] Poly Haven glTF:', entry.url, '| risorse:', Object.keys(byName).length,
+      cached.__hits ? '| dalla cache: ' + cached.__hits : '| scaricate')
     const ok = await this._loadGLTF(entry.url, modifier)
     if (ok) {
       this.current = { source: 'polyhaven', id: pick.id, name: pick.name }
@@ -444,7 +510,7 @@ Model3d.prototype.filesFor = async function (thingId) {
 Model3d.prototype.loadFromThingiverse = async function (term, throwOnError = false) {
   try {
     if (!this.tvToken) throw new Error('token Thingiverse mancante')
-    const things = await this.search(term || (this.client && this.client.currentTag) || 'low poly')
+    const things = await this.search(term || (this.client && this.client.tagFor ? this.client.tagFor('model') : null) || (this.client && this.client.currentTag) || 'low poly')
     if (!things.length) throw new Error('nessun risultato per "' + term + '"')
     // mescola e prova finché trova un file caricabile
     const pool = things.slice().sort(() => Math.random() - 0.5).slice(0, 6)
@@ -669,14 +735,24 @@ Model3d.prototype.render = function (dt, now) {
     // sotto il limite meno la metà del modello — altrimenti esce e "sparisce".
     //   X: 1.30 * 0.95 ≈ 1.24  (su 2.21 → resta ampiamente in campo)
     //   Y: 1.30 * 0.42 ≈ 0.55  (su 1.24 → resta in campo anche il modello)
-    P.drift += dt
+    // ATTENZIONE: `dt` è in MILLISECONDI. `P.drift += dt` faceva avanzare la
+    // fase di ~17 unità per frame: con speed≈0.16 il seno girava a ~18 Hz, cioè
+    // il modello VIBRAVA sul posto invece di vagare (era il "flickering").
+    // In secondi: 0.16*0.70 = 0.112 rad/s → un ciclo in ~56 s.
+    P.drift += dts
     // Velocità MOLTO più bassa e poco influenzata dall'audio: ~30 s per un
     // ciclo a riposo, ~16 s con i bassi al massimo (prima scendeva a ~6 s).
     // L'influenza audio è stata ULTERIORMENTE ridotta (~3×) perché il modello
     // scattava a ogni colpo di basso.
     const speed = 0.16 + bass * 0.10 + high * 0.03
-    const ax = 0.80 + high * 0.06 + drive * 0.04
-    const ay = 0.20 + mid * 0.03 + drive * 0.02
+    // Ampiezze ridotte: il modello parte già dal SUO slot in periferia, quindi
+    // il vagabondaggio è un'oscillazione attorno a quello slot (~±0.55 X,
+    // ±0.16 Y) e non deve riportarlo al centro né spingerlo fuori dal frame.
+    // Con più modelli in scena si stringe ancora, per non farli sovrapporre.
+    const many = Math.max(1, this.models.length)
+    const shrink = many === 1 ? 1 : Math.max(0.5, 1 / Math.sqrt(many))
+    const ax = (0.55 + high * 0.05 + drive * 0.03) * shrink
+    const ay = (0.16 + mid * 0.02 + drive * 0.02) * shrink
     P.posX = Math.sin(P.drift * speed * 0.70) * ax
           + Math.sin(P.drift * speed * 0.23 + 1.7) * ax * 0.28
     P.posY = Math.cos(P.drift * speed * 0.53) * ay
@@ -772,6 +848,16 @@ Model3d.prototype._attach = function (object3d, animations) {
   const scale = (1.7 / (size || 1)) * crowd
   object3d.scale.setScalar(scale)
   object3d.position.sub(center.multiplyScalar(scale))
+  // ZONA DELLO SCHERMO: il modello non nasce più al centro (dove sta la patch
+  // Orca e dove finivano TUTTI). Lo slot normalizzato dell'allocatore viene
+  // convertito in coordinate mondo per la camera a z=0:
+  //   semi-larghezza visibile 2.21, semi-altezza 1.24
+  // I fattori 0.42 / 0.45 tengono il modello ben dentro il frame.
+  const slot = (this.client && this.client.nextSlot) ? this.client.nextSlot() : { x: 0.5, y: 0.5 }
+  const slotX = (slot.x - 0.5) * 2 * 2.21 * 0.42
+  const slotY = (0.5 - slot.y) * 2 * 1.24 * 0.45
+  object3d.position.x += slotX
+  object3d.position.y += slotY
   this.scene.add(object3d)
 
   // Uniform di deformazione PROPRIA di questo modello (fase indipendente)
@@ -795,6 +881,11 @@ Model3d.prototype._attach = function (object3d, animations) {
   object3d.traverse((o) => {
     if (o.isMesh && o.material) entry.baseMats.push({ mesh: o, mat: o.material })
   })
+  // MATERIALI: i glTF di Poly Haven sono PBR fotogrammetrici e senza ritocchi
+  // escono quasi neri (metalness 1 senza metalnessMap = specchio scuro, e
+  // roughness 1 spegne ogni riflesso). Li normalizziamo verso qualcosa che si
+  // veda bene sopra il feed.
+  this._tuneMaterials(object3d)
   if (animations && animations.length) {
     entry.mixer = new THREE.AnimationMixer(object3d)
     for (const clip of animations) { entry.mixer.clipAction(clip).play() }
@@ -808,6 +899,45 @@ Model3d.prototype._attach = function (object3d, animations) {
   if (this.glossy) this._applyGlossyTo(entry)
   console.log('[Model3d] modelli in scena:', this.models.length)
   return true
+}
+
+// Normalizza i materiali di un modello appena caricato.
+// Perché serve: i glTF realistici (Poly Haven, fotogrammetria) usano spesso
+// metalness = 1 SENZA metalnessMap — con un envmap diventano specchi scuri, e
+// con roughness = 1 non riflettono nulla. Il risultato era "modelli sempre
+// scuri". Qui li riportiamo in una fascia visibile sopra il feed.
+Model3d.prototype._tuneMaterials = function (root) {
+  const THREE = this.THREE
+  if (!root || !THREE) return
+  let n = 0
+  root.traverse((o) => {
+    if (!o.isMesh || !o.material) return
+    const mats = Array.isArray(o.material) ? o.material : [o.material]
+    for (const m of mats) {
+      if (!m || m._orkavTuned) continue
+      m._orkavTuned = true
+      n++
+      try {
+        // envmap: la luce ambientale del RoomEnvironment
+        if ('envMapIntensity' in m) m.envMapIntensity = 1.35
+        // metallo pieno senza mappa del metallo → specchio nero: limitato
+        if ('metalness' in m && !m.metalnessMap && m.metalness > 0.35) m.metalness = 0.18
+        // superfici totalmente diffusive: un filo di riflesso le stacca dal fondo
+        if ('roughness' in m && !m.roughnessMap && m.roughness > 0.92) m.roughness = 0.85
+        // materiali "fisici" opachi che però hanno alpha < 1 dall'importer
+        if (m.transparent && m.opacity >= 0.99) m.transparent = false
+        // niente facce nere: le geometrie con normali sbagliate restano visibili
+        if (m.side === THREE.FrontSide && m.metalness > 0.5) m.side = THREE.DoubleSide
+        // il colore base troppo scuro è la causa più comune del "tutto nero"
+        if (m.color && !m.map) {
+          const l = m.color.r * 0.299 + m.color.g * 0.587 + m.color.b * 0.114
+          if (l > 0 && l < 0.06) m.color.multiplyScalar(0.06 / l)
+        }
+        m.needsUpdate = true
+      } catch (e) {}
+    }
+  })
+  if (n) { console.log('[Model3d] materiali normalizzati:', n) }
 }
 
 // Rimuove una voce dalla scena (e libera le risorse)

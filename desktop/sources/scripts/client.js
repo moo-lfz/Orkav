@@ -88,6 +88,65 @@ function Client () {
     'lucifer', 'satan', 'esoterism', 'ai', 'ki', 'solar opposites', 'brickleberry', 'futurama']
   this.currentTag = this.tags[Math.floor(Math.random() * this.tags.length)]
 
+  // --- TAG PER CANALE -------------------------------------------------------
+  // Ogni canale ha il PROPRIO tag: le GIF possono pescare da un tag diverso
+  // dalle immagini di background, dai modelli 3D e dai font dei big text.
+  // null = segue il tag globale (this.currentTag). Si impostano dal commander:
+  //   tagbg:<t>  taggif:<t>  tag3d:<t>  tagfont:<t>   (e tag:<t> per il globale)
+  this.tagBy = { bg: null, gif: null, model: null, font: null }
+
+  // --- SLOT DELLO SCHERMO ---------------------------------------------------
+  // Tutti gli elementi "a comparsa" (layer immagine, stormo GIF, modelli 3D)
+  // pescano una zona da questa lista PERIFERICA, a rotazione: prima finivano
+  // tutti al centro, dove sta la patch Orca, e si accavallavano.
+  // Coordinate normalizzate (0..1, y verso il basso).
+  this.slotList = [
+    { x: 0.16, y: 0.14 }, { x: 0.84, y: 0.14 },
+    { x: 0.11, y: 0.50 }, { x: 0.89, y: 0.50 },
+    { x: 0.20, y: 0.84 }, { x: 0.80, y: 0.84 },
+    { x: 0.50, y: 0.10 }, { x: 0.50, y: 0.88 },
+    { x: 0.33, y: 0.26 }, { x: 0.67, y: 0.74 },
+    { x: 0.67, y: 0.26 }, { x: 0.33, y: 0.74 }
+  ]
+  this._slotNext = Math.floor(Math.random() * this.slotList.length)
+  // Prossima zona libera, a rotazione (12 slot: con max 6 modelli + layer +
+  // stormo non si ripete quasi mai lo stesso posto due volte di fila).
+  this.nextSlot = () => {
+    const s = this.slotList[this._slotNext % this.slotList.length]
+    this._slotNext++
+    return s
+  }
+  this.resetSlots = () => { this._slotNext = Math.floor(Math.random() * this.slotList.length) }
+
+  // Tag effettivo di un canale: l'override se c'è, altrimenti il globale.
+  this.tagFor = (kind) => {
+    const t = this.tagBy ? this.tagBy[kind] : null
+    return t || this.currentTag
+  }
+  // kind: 'bg' | 'gif' | 'model' | 'font'. tag vuoto/null = torna al globale.
+  this.setTagFor = (kind, tag) => {
+    if (!this.tagBy || !(kind in this.tagBy)) { return false }
+    const v = (tag == null) ? null : String(tag).trim().toLowerCase()
+    this.tagBy[kind] = v || null
+    return true
+  }
+  // Riepilogo leggibile dei quattro canali (per il commander e il terminale).
+  this.tagSummary = () => {
+    const k = ['bg', 'gif', 'model', 'font']
+    return k.map(n => n + ':' + this.tagFor(n)).join(' ')
+  }
+  // Font di partenza per il canale 'font': tag diversi partono da font diversi,
+  // poi si ruota a ogni scritta. Così `tagfont:<nome>` cambia davvero il font.
+  this.fontBaseForTag = () => {
+    const n = this.bigTextFonts.length || 1
+    const t = String(this.tagFor('font') || '')
+    const i = this.tags.indexOf(t)
+    if (i >= 0) { return i % n }
+    let h = 0
+    for (let k = 0; k < t.length; k++) { h = (h * 31 + t.charCodeAt(k)) >>> 0 }
+    return h % n
+  }
+
   this.install = (host) => {
     console.log('[Client] install() inizio')
     host.appendChild(this.el)
@@ -218,9 +277,19 @@ function Client () {
     this.acels.set('View','Next Tag','CmdOrCtrl+Shift+T', () => {
       const idx = (this.tags.indexOf(this.currentTag) + 1) % this.tags.length
       this.currentTag = this.tags[idx]
-      this.background.loadBackgroundByTag(this.currentTag)
-      this.background.loadSwarmByTag(this.currentTag)
-      console.log('[Orca] Tag:', this.currentTag)
+      this.background.loadBackgroundByTag(this.tagFor('bg'))
+      this.background.loadSwarmByTag(this.tagFor('gif'))
+      // Anche il modello 3D segue il tag (se ha un override suo, resta il suo).
+      if (this.model3d && this.model3d.active) { this.model3d.loadRandom() }
+      console.log('[Orca] Tag globale:', this.currentTag, '| bg:', this.tagFor('bg'), 'gif:', this.tagFor('gif'), '3d:', this.tagFor('model'), 'font:', this.tagFor('font'))
+    })
+    // Cambia SOLO il tag del modello 3D, senza toccare bg/gif/font.
+    this.acels.set('View','Next Tag (3D)','Alt+Shift+T', () => {
+      const idx = (this.tags.indexOf(this.tagFor('model')) + 1) % this.tags.length
+      this.setTagFor('model', this.tags[idx])
+      if (this.model3d && this.model3d.active) { this.model3d.loadRandom() }
+      console.log('[Orca] Tag 3D:', this.tagFor('model'))
+      this.update()
     })
     this.acels.set('Midi','Play/Pause Midi','CmdOrCtrl+Space',()=>{this.clock.togglePlay(true)})
     this.acels.set('Midi','Next Input Device','CmdOrCtrl+,',()=>{this.clock.setFrame(0);this.io.midi.selectNextInput()})
@@ -1051,7 +1120,7 @@ function Client () {
       // Velocity → dimensione (sizePct), con leggera oscillazione
       const wanted = Math.floor(H * (t.sizePct || 0.5) + Math.sin(age * 0.002 + i) * 14)
       // Font per-scritta (rotante ad ogni nuova nota MIDI)
-      const font = fonts[(t.fontIdx !== undefined ? t.fontIdx : Math.floor(t.seed * fonts.length)) % fonts.length]
+      const font = fonts[(this.fontBaseForTag() + (t.fontIdx !== undefined ? t.fontIdx : Math.floor(t.seed * fonts.length))) % fonts.length]
       ctx.save()
       // AUTO-FIT: la scritta deve entrare TUTTA nella larghezza (margine 4%)
       // così è leggibile per intero invece di essere tagliata ai bordi.
@@ -1116,7 +1185,7 @@ function Client () {
 
       // Font BIG TEXT (dafont distintivi, rotante per scritta) — il prompt sotto resta input_mono_medium
       const btFonts = this.bigTextFonts
-      const btFont = btFonts[(t.fontIdx !== undefined ? t.fontIdx : Math.floor(t.seed * btFonts.length)) % btFonts.length]
+      const btFont = btFonts[(this.fontBaseForTag() + (t.fontIdx !== undefined ? t.fontIdx : Math.floor(t.seed * btFonts.length))) % btFonts.length]
       // AUTO-FIT: una copia intera del testo entra nella larghezza, così mentre
       // attraversa lo schermo si legge tutto.
       const size = this.fitBigTextSize(ctx, t.text, W * 0.92, Math.floor(gridH * 0.45), btFont)
