@@ -131,4 +131,17 @@ Prefetch.add('maskfx', async () => {
   await ft.maskFX.init()
 })
 
+// --- 5) CSS dei font dei big text (3.1 MB, 38 famiglie) ---------------------
+// Caricarlo alla prima scritta costava ~300 ms di blocco (parsing del CSS).
+// Qui si scarica/parsa in idle, per ultimo, quando non c'e' altro da fare.
+Prefetch.add('bigtext-fonts', async () => {
+  const c = window.orkavClient
+  if (!c || c._fontsReady) { return }
+  c.ensureBigTextFonts()
+  // aspetta che il foglio sia applicato (l'onload setta _fontsReady)
+  for (let i = 0; i < 40 && !c._fontsReady; i++) {
+    await new Promise(r => setTimeout(r, 250))
+  }
+})
+
 window.Prefetch = Prefetch

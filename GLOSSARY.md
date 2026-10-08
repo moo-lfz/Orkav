@@ -21,7 +21,7 @@ Ogni `*.frag` in `desktop/sources/shaders/` viene caricato automaticamente all'a
 | `chromawarp` | `Alt+N` | curvatura cromatica: le componenti RGB si curvano separatamente |
 | `fracture` | `Alt+Q` | **vetro infranto**: shard Worley, rifrazione per-shard, dispersione cromatica, crepe e caustiche |
 | `glow` | `Alt+L` | bagliore neon con bloom |
-| `motionmosh` | `Alt+F` | **datamosh**: stima il movimento e trascina i pixel nel verso opposto, lasciando la scia |
+| `motionmosh` | `Alt+F` | **datamosh + glitch**: stima il movimento, trascina i pixel nel verso opposto (scia P-frame) e ci stratifica tearing, macroblocchi, RGB burst e databending |
 | `bubble` | `Alt+E` | **schiuma di sapone**: Worley a 2 ottave, pellicole traslucide che deformano il feed |
 | `copy` | — | shader di servizio (pass-through usato dal motore) |
 
@@ -174,7 +174,11 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | `apm:160` | anima il BPM verso il valore |
 | `play` / `stop` / `run` | trasporto |
 | `frame:0` / `skip:2` / `rewind:2` | controllo frame |
-| `midi:<n>` | seleziona il device MIDI di output (esclusivo); `midi:-1` azzera |
+| `midi:<n>` | **output multiplo**: aggiunge/toglie il device (toggle) |
+| `midi:<n>!` | esclusiva: solo quel device |
+| `midi:0,2` | selezione esatta |
+| `midi:-1` | azzera la selezione |
+| `midiclock:<n>` | stessa sintassi, ma per **clock/transport** (vuoto = tutti gli output) |
 | `mididevices` | elenca device MIDI con indice |
 | `tag:<nome>` | cambia il tag **globale** (bg + gif + 3D senza override) |
 | `tagbg:` `taggif:` `tag3d:` `tagfont:` | tag **per canale** (vuoto = torna al globale) |
@@ -279,6 +283,21 @@ I tag pilotano background, GIF e modelli 3D (`Cmd+Shift+T` per ciclare, `Cmd+W` 
 | **`nextSlot()`** | restituisce la prossima zona a rotazione, con partenza casuale |
 | **`resetSlots()`** | riparte da una zona casuale: chiamato da `Alt+P` |
 | **chi li usa** | layer immagine, spawn dello stormo GIF, centro di oscillazione dei modelli 3D |
+
+---
+
+## 4f. Testo 3D, palette e font
+
+| Termine | Significato |
+|---------|-------------|
+| **prospettiva per blocco** | il testo è diviso in max 6 blocchi, ognuno proiettato con la prospettiva del suo centro mentre la scritta ruota |
+| **estrusione** | 8 strati dietro la faccia frontale, tinti della stessa famiglia di colore |
+| **rotazione quantizzata** | 0.07 rad + intervallo minimo 110 ms fra rigenerazioni: il costo del render 3D è ammortizzato |
+| **bloom a bassa risoluzione** | il glow: la faccia frontale è disegnata in un canvas 1/4 e upscalata col smoothing bilineare (che *è* il blur). NIENTE `shadowBlur`: in Skia è un blur CPU ed era la voce più cara del frame |
+| **`lighter`** | blend additivo usato per il glow. `screen` costava 90 ms/frame |
+| **`bigTextPalette`** | rosa shock · viola · verde fluo · petrolio. Solo tinte sgargianti |
+| **font misurati** | 34 famiglie passate al benchmark; 4 tolte perché costavano 35–106 ms per rigenerazione (COLRv1/outline patched) |
+| **CSS pigro** | `bigtext-fonts.css` (3.1 MB) non si carica all'avvio ma nel prefetch |
 
 ---
 

@@ -7,6 +7,8 @@ function Midi (client) {
   this.isClock = false
 
   this.outputIndexes = []
+  // Selezione separata per CLOCK/transport. Vuota = segue outputIndexes.
+  this.clockIndexes = []
   this.inputIndex = -1
 
   this.outputs = []
@@ -106,10 +108,10 @@ function Midi (client) {
    
 
   this.allNotesOff = function () {
-    if (!this.outputDevice()) { return }
+    if (!this.clockDevice().length) { return }
     console.log('MIDI', 'All Notes Off')
     for (let chan = 0; chan < 16; chan++) {
-     this.outputDevice().forEach(device => device.send([0xB0 + chan, 123, 0]))
+     this.clockDevice().forEach(device => device.send([0xB0 + chan, 123, 0]))
     }
   }
 
@@ -118,24 +120,24 @@ function Midi (client) {
   this.ticks = []
 
   this.sendClockStart = function () {
-  if (!this.outputDevice()) return
+  if (!this.clockDevice().length) return
   this.isClock = true
-  this.outputDevice().forEach(device => device.send([0xFA], 0))
+  this.clockDevice().forEach(device => device.send([0xFA], 0))
   console.log('MIDI', 'MIDI Start Sent')
   // Avvia il clock MIDI
   this.clockRunning = true
 }
 
 this.sendClockStop = function () {
-  if (!this.outputDevice()) return
+  if (!this.clockDevice().length) return
   this.isClock = false
-  this.outputDevice().forEach(device => device.send([0xFC], 0))
+  this.clockDevice().forEach(device => device.send([0xFC], 0))
   console.log('MIDI', 'MIDI Stop Sent')
   this.clockRunning = false
 }
 
   this.sendClock = function () {
-    if (!this.outputDevice()) { return }
+    if (!this.clockDevice().length) { return }
     if (this.isClock !== true) { return }
 
     const bpm = client.clock.speed.value
@@ -144,7 +146,7 @@ this.sendClockStop = function () {
 
     for (let id = 0; id < 6; id++) {
       if (this.ticks[id]) { clearTimeout(this.ticks[id]) }
-      this.ticks[id] = setTimeout(() => { this.outputDevice().forEach(device => device.send([0xF8], 0))}, parseInt(id) * frameFrag)
+      this.ticks[id] = setTimeout(() => { this.clockDevice().forEach(device => device.send([0xF8], 0))}, parseInt(id) * frameFrag)
     }
   }
 
@@ -171,21 +173,47 @@ this.sendClockStop = function () {
 
   // Tools
 
+ // OUTPUT MULTIPLO — si possono tenere attivi PIÙ device contemporaneamente.
+ // Caso d'uso reale: mandare le stesse note all'IAC Driver (→ Ableton Live) E
+ // via USB all'hardware esterno (es. Ableton Move) nello stesso momento.
+ //
+ //   midi:<n>     TOGGLE: aggiunge il device alla selezione, o lo toglie se c'è
+ //   midi:<n>!    ESCLUSIVA: solo quel device (azzera gli altri)
+ //   midi:-1      azzera tutta la selezione
+ //   midi:<a>,<b> selezione esatta: solo i device elencati
+ //
+ // Ogni nota può comunque essere forzata su UNA porta specifica dall'operatore
+ // `:` della patch (il suo argomento port), che scavalca questa selezione.
  this.selectOutput = function (id) {
-  if (id === -1) { 
-    this.outputIndexes = []; 
-    console.log('MIDI', 'Select Output Device: None'); 
-    return 
+  // id può essere -1, un numero, una stringa con "!" finale, o una lista "0,2"
+  if (id === -1 || id === '-1' || id === null) {
+    this.outputIndexes = []
+    console.log('MIDI', 'Select Output Device: None')
+    return
   }
-  if (!this.outputs[id]) { 
-    console.warn('MIDI', `Unknown device with id ${id}`); 
-    return 
+  if (typeof id === 'string' && id.indexOf(',') >= 0) {
+    const ids = id.split(',').map(s => parseInt(s)).filter(n => !isNaN(n) && this.outputs[n])
+    this.outputIndexes = ids
+    console.log('MIDI', 'Output:', ids.length ? ids.map(i => this.outputs[i].name).join(' + ') : 'None')
+    return
   }
-  // Selezione ESCLUSIVA: un solo device alla volta (per hardware USB come
-  // Ableton Move / ESI MIDIMATE, mandare note a 6 porte contemporaneamente
-  // confonde l'utente e i device). midi:-1 azzera la selezione.
-  this.outputIndexes = [parseInt(id)]
-  console.log('MIDI', `Select Output Device: ${this.outputs[id].name}`)
+  let exclusive = false
+  let raw = id
+  if (typeof id === 'string' && id.trim().endsWith('!')) { exclusive = true; raw = id.trim().slice(0, -1) }
+  const n = parseInt(raw)
+  if (isNaN(n) || !this.outputs[n]) {
+    console.warn('MIDI', `Unknown device with id ${id}`)
+    return
+  }
+  if (exclusive) {
+    this.outputIndexes = [n]
+  } else {
+    const at = this.outputIndexes.indexOf(n)
+    if (at >= 0) { this.outputIndexes.splice(at, 1) } else { this.outputIndexes.push(n) }
+  }
+  console.log('MIDI', 'Output:', this.outputIndexes.length
+    ? this.outputIndexes.map(i => `[${i}] ${this.outputs[i].name}`).join(' + ')
+    : 'None')
 }
 
    
@@ -199,6 +227,35 @@ this.sendClockStop = function () {
     this.inputDevice().onmidimessage = (msg) => { this.receive(msg) }
     console.log('MIDI', `Select Input Device: ${this.inputDevice().name}`)
   }
+
+ // Device che ricevono il CLOCK/transport. Vuoto = tutti gli output selezionati.
+ // Serve perché mandando note a IAC + USB insieme Ableton riceverebbe il clock
+ // da due sorgenti e andrebbe in conflitto.
+ this.selectClockOutputs = function (id) {
+   if (id === -1 || id === '-1') { this.clockIndexes = []; console.log('MIDI', 'Clock: nessun device'); return }
+   if (typeof id === 'string' && id.indexOf(',') >= 0) {
+     this.clockIndexes = id.split(',').map(s2 => parseInt(s2)).filter(n => !isNaN(n) && this.outputs[n])
+   } else {
+     let exclusive = false, raw = id
+     if (typeof id === 'string' && id.trim().endsWith('!')) { exclusive = true; raw = id.trim().slice(0, -1) }
+     const n = parseInt(raw)
+     if (isNaN(n) || !this.outputs[n]) { console.warn('MIDI', `Unknown device with id ${id}`); return }
+     if (exclusive) { this.clockIndexes = [n] }
+     else {
+       const at = this.clockIndexes.indexOf(n)
+       if (at >= 0) { this.clockIndexes.splice(at, 1) } else { this.clockIndexes.push(n) }
+     }
+   }
+   console.log('MIDI', 'Clock →', this.clockIndexes.length ? this.clockIndexes.map(i => `[${i}] ${this.outputs[i].name}`).join(' + ') : 'nessun device')
+ }
+
+ // Device per il clock: la selezione dedicata, o tutti gli output selezionati
+ this.clockDevice = function () {
+   if (this.clockIndexes && this.clockIndexes.length) {
+     return this.clockIndexes.map(i => this.outputs[i]).filter(Boolean)
+   }
+   return this.outputDevice()
+ }
 
  this.outputDevice = function () {
   var devices = []
@@ -250,7 +307,15 @@ this.sendClockStop = function () {
     // il comando midi:<indice>. NON diamo priorità all'IAC: quello serve solo
     // per il routing software (Ableton Live), non per hardware USB.
     console.log('MIDI', 'Output disponibili:', this.outputs.map((d, i) => `[${i}] ${d.name}`).join(', '))
-    this.selectOutput(this.outputs.length ? 0 : -1)
+    // All'avvio seleziona il primo device SOLO se non c'è già una selezione
+    // (così un hot-plug non cancella la scelta multipla fatta con midi:<n>).
+    if (!this.outputIndexes || !this.outputIndexes.length) {
+      this.selectOutput(this.outputs.length ? 0 : -1)
+    } else {
+      // scarta gli indici non più validi e logga la selezione mantenuta
+      this.outputIndexes = this.outputIndexes.filter(i => this.outputs[i])
+      console.log('MIDI', 'Output mantenuti:', this.outputIndexes.map(i => `[${i}] ${this.outputs[i].name}`).join(' + ') || 'None')
+    }
 
     const inputs = midiAccess.inputs.values()
     this.inputs = []

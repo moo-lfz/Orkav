@@ -48,7 +48,60 @@ function Client () {
   this.fxTextMode = false; this.fxTextBuffer = ''
   this.bigTextMode = false; this.bigTextBuffer = ''; this.bigTexts = []
   // Font BIG TEXT (dafont distintivi — NON tocca input_mono_medium dell'interfaccia)
-  this.bigTextFonts = ['Ghastly Panic', 'Melted Monster', 'VCR OSD Mono', 'Nulshock']
+  // Font BIG TEXT: 38 display particolari (i 4 dafont originali + 34 da Google
+  // Fonts, OFL). Il CSS con i font è in links/bigtext-fonts.css e viene caricato
+  // PIGRAMENTE alla prima scritta: pesa 3.1 MB e non deve rallentare l'avvio.
+  // NON tocca input_mono_medium dell'interfaccia.
+  // PALETTE BIG TEXT: solo tinte SGARGIANTI (rosa shock, viola, verde fluo,
+  // petrolio). Usata da TUTTI i punti che scelgono un colore per una scritta.
+  this.bigTextPalette = [
+    '#ff10f0', // rosa shock
+    '#ff2fd6', // rosa shock acceso
+    '#ff5ce1', // rosa shock chiaro
+    '#b39dff', // viola
+    '#8b5cff', // viola profondo
+    '#c77dff', // viola luminoso
+    '#39ff14', // verde fluo
+    '#00ff9d', // verde fluo menta
+    '#7cff3a', // verde fluo acido
+    '#00ffd0', // petrolio
+    '#12e0c8', // petrolio scuro
+    '#4dffe8'  // petrolio chiaro
+  ]
+  this.pickBigTextColor = () => this.bigTextPalette[Math.floor(Math.random() * this.bigTextPalette.length)]
+
+  // 34 famiglie. MISURATE una per una (10 fillText a 200px, con sync forzato):
+  // tutte sotto i 15 ms TRANNE quattro, che sono state TOLTE perché la
+  // rasterizzazione dei loro glifi costa 35-106 ms per rigenerazione:
+  //   Rubik Wet Paint 106ms · Ghastly Panic 38ms · Sixtyfour 37ms · Eater 35ms
+  // (sono font COLRv1/outline patched: bellissimi ma insostenibili a schermo).
+  this.bigTextFonts = [
+    'Melted Monster', 'VCR OSD Mono', 'Nulshock',
+    'Rubik Glitch', 'Rubik Burned', 'Rubik Beastly',
+    'Rubik Puddles', 'Rubik Iso', 'Rubik Distressed', 'Rubik Spray Paint',
+    'Rubik Marker Hatch', 'Rubik Moonrocks', 'Rubik Maze', 'Rubik Gemstones',
+    'Rubik Vinyl', 'Nosifer', 'Butcherman', 'Creepster', 'Metal Mania',
+    'Pirata One', 'Monoton', 'Bungee Shade', 'Bungee Inline', 'Zen Dots',
+    'Major Mono Display', 'Press Start 2P', 'Jacquard 12', 'Tourney',
+    'Nabla', 'Workbench', 'Micro 5', 'Danfo', 'Jersey 10', 'Silkscreen'
+  ]
+  this._fontsLoading = false
+  this._fontsReady = false
+  // Carica il CSS dei font dei big text (una volta sola, alla prima scritta)
+  this.ensureBigTextFonts = () => {
+    if (this._fontsLoading || this._fontsReady) { return }
+    this._fontsLoading = true
+    const l = document.createElement('link')
+    l.rel = 'stylesheet'
+    l.type = 'text/css'
+    l.href = 'links/bigtext-fonts.css'
+    l.onload = () => {
+      this._fontsReady = true
+      console.log('[Client] font big text caricati (' + this.bigTextFonts.length + ' famiglie)')
+    }
+    l.onerror = () => { this._fontsLoading = false }
+    document.head.appendChild(l)
+  }
 
   this.params = { p0:0,p1:0,p2:0,p3:0,p4:0,p5:0,p6:0,p7:0 }
   this.midiNote = 0;
@@ -601,7 +654,7 @@ function Client () {
       this.tagMode=false; this.tagBuffer=''; this.update(); return
     }
     if(this.bigTextMode){
-      if(this.bigTextBuffer.length>0){this._bigTextFontIdx=(this._bigTextFontIdx||0)+1;const bigColors=['#ff10f0','#b39dff','#39ff14','#00ffd0'];while(this.bigTexts.length>=4){this.bigTexts.shift()}const btText=this.bigTextBuffer.toUpperCase().slice(0,42);const btMotion=this.pickBigTextMotion();this.bigTexts.push(Object.assign({text:btText,mode:Math.floor(Math.random()*3),born:performance.now(),ttl:this.bigTextDuration(btText),seed:Math.random(),fontIdx:this._bigTextFontIdx,sizePct:0.5+Math.random()*0.3,color:bigColors[Math.floor(Math.random()*4)]},btMotion))}
+      if(this.bigTextBuffer.length>0){this._bigTextFontIdx=(this._bigTextFontIdx||0)+1;const bigColors=this.bigTextPalette;while(this.bigTexts.length>=4){this.bigTexts.shift()}const btText=this.bigTextBuffer.toUpperCase().slice(0,42);const btMotion=this.pickBigTextMotion();this.bigTexts.push(Object.assign({text:btText,mode:Math.floor(Math.random()*3),born:performance.now(),ttl:this.bigTextDuration(btText),seed:Math.random(),fontIdx:this._bigTextFontIdx,sizePct:0.5+Math.random()*0.3,color:bigColors[Math.floor(Math.random()*bigColors.length)]},btMotion))}
       this.bigTextMode=false;this.bigTextBuffer='';this.update();return
     }
     if(this.fxTextMode){
@@ -688,6 +741,11 @@ function Client () {
     }
     // Con la finestra modale aperta NON si pulisce: resta a schermo l'ultimo
     // frame invece di un fondo nero dietro al pannello di sistema.
+    // Font dei big text: il CSS pesa 3.1 MB, si carica solo quando serve davvero
+    if (!this._fontsReady && !this._fontsLoading && (this.bigTextMode || this.bigTexts.length)) {
+      this.ensureBigTextFonts()
+    }
+
     if (!(this._modal > 0)) { this.clear() }
 
     // === FINESTRA MODALE (dialogo file nativo) ===
@@ -1080,6 +1138,156 @@ function Client () {
     ctx.restore()
   }
 
+  // --- TESTO 3D -------------------------------------------------------------
+  // I big text sono renderizzati in 3D: prospettiva per-carattere (rotazione
+  // attorno all'asse verticale, quindi le lettere più lontane rimpiccioliscono
+  // e si avvicinano al centro), inclinazione sull'asse orizzontale e
+  // ESTRUSIONE a strati dietro la faccia frontale.
+  //
+  // COSTO: 13 strati × N caratteri di fillText a ogni frame sarebbe insostenibile
+  // (fino a ~1000 fillText/frame con 4 scritte). Quindi il render 3D viene
+  // CACHATO in un canvas fuori schermo per scritta e rigenerato solo quando la
+  // rotazione cambia in modo percepibile (~0.03 rad, cioè poche volte al
+  // secondo); ogni frame è una singola drawImage.
+  this._shade = (hex, k) => {
+    try {
+      const h = String(hex || '#ffffff').replace('#', '')
+      const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16)
+      const r = Math.round(((n >> 16) & 255) * k)
+      const g = Math.round(((n >> 8) & 255) * k)
+      const b = Math.round((n & 255) * k)
+      return `rgb(${Math.min(255, r)},${Math.min(255, g)},${Math.min(255, b)})`
+    } catch (e) { return '#333333' }
+  }
+
+  // Ritorna { canvas, padX, cy } — canvas già pronto da drawImage.
+  // `t` è la voce big text (per tenere la cache), `age` l'età in ms.
+  //
+  // COSTO (misurato con un profiler per-sezione): rasterizzare 11 strati × 21
+  // caratteri di fillText a ~350px costava ~90-160 ms per rigenerazione. Qui:
+  //  - il testo è disegnato a BLOCCHI (fino a 6) invece che carattere per
+  //    carattere: la prospettiva è quella del centro del blocco → 60 fillText
+  //    per rigenerazione invece di 231;
+  //  - la rotazione è QUANTIZZATA (0.07 rad) e c'è un intervallo minimo di
+  //    110 ms fra rigenerazioni, quindi il costo è ammortizzato;
+  //  - il glow è un bloom a bassa risoluzione, NON shadowBlur (vedi sotto).
+  this.text3DCanvas = (t, text, size, font, color, opts) => {
+    opts = opts || {}
+    const depth = 8
+    if (!t._c3d) { t._c3d = {} }
+    const c = t._c3d
+    const now = performance.now()
+    // Angoli animati lentamente, sfasati dal seed: ogni scritta ruota a modo suo
+    const rotY = Math.sin(t._age3d * 0.00040 + (t.seed || 0) * 6.2831) * 0.55
+    const rotX = Math.cos(t._age3d * 0.00027 + (t.seed || 0) * 4.1) * 0.24
+    const qY = Math.round(rotY / 0.07) * 0.07
+    const qX = Math.round(rotX / 0.07) * 0.07
+    const key = text + '|' + font + '|' + size + '|' + color + '|' + (opts.glow ? 1 : 0)
+    if (c.canvas && c.key === key && c.qY === qY && c.qX === qX) { return c }
+    if (c.canvas && c.key === key && (now - (c.t || 0)) < 110) { return c }
+
+    const meas = this.context
+    meas.font = `bold ${size}px "${font}"`
+    const chars = Array.from(text)
+    const widths = chars.map(ch => meas.measureText(ch).width)
+    const total = widths.reduce((a, b) => a + b, 0) || 1
+
+    // BLOCCHI: ognuno con il testo e il centro locale (per la prospettiva)
+    const K = Math.min(6, Math.max(2, Math.ceil(chars.length / 4)))
+    const per = Math.ceil(chars.length / K)
+    const chunks = []
+    for (let i = 0; i < chars.length; i += per) {
+      const sub = chars.slice(i, i + per)
+      const w = widths.slice(i, i + per).reduce((a, b) => a + b, 0)
+      const left = widths.slice(0, i).reduce((a, b) => a + b, 0)
+      chunks.push({ text: sub.join(''), cx: left + w / 2 })
+    }
+
+    const padX = Math.ceil(size * 0.45 + depth * size * 0.028 + 12)
+    const padY = Math.ceil(size * 0.5 + depth * size * 0.05 + 12)
+    const cw = Math.ceil(total * 1.2) + padX * 2
+    const chh = Math.ceil(size * 1.6) + padY * 2
+    if (!c.canvas) { c.canvas = document.createElement('canvas'); c.key = null }
+    const cv = c.canvas
+    if (cv.width !== cw || cv.height !== chh) { cv.width = cw; cv.height = chh }
+    const g = cv.getContext('2d')
+    g.setTransform(1, 0, 0, 1, 0, 0)
+    g.clearRect(0, 0, cw, chh)
+    const ox = cw / 2
+    const oy = chh / 2
+    const focal = size * 3.4
+
+    // Disegna il testo (a blocchi) con la prospettiva, su un target qualsiasi
+    const drawFace = (target, fill, dx, dy, scale) => {
+      target.fillStyle = fill
+      target.textAlign = 'center'
+      target.textBaseline = 'middle'
+      target.font = `bold ${size}px "${font}"`
+      for (let i = 0; i < chunks.length; i++) {
+        const ch = chunks[i]
+        const z = ch.cx * Math.sin(rotY)
+        const persp = focal / Math.max(1, focal + z)
+        const px = ch.cx * Math.cos(rotY) * persp
+        const ty = -ch.cx * Math.sin(rotY) * Math.tan(rotX) * persp
+        target.save()
+        target.translate(ox + dx + px, oy + dy + ty)
+        target.scale(persp * scale, persp * scale)
+        target.fillText(ch.text, 0, 0)
+        target.restore()
+      }
+    }
+
+    // Estrusione: strati dietro, spostati lungo la direzione di profondità.
+    // Tinte della stessa famiglia di colore (mai grigi).
+    const step = Math.max(1.4, size * 0.030)
+    const ddx = Math.sin(rotY + 0.9)
+    const ddy = 0.42 + Math.sin(rotX) * 0.5
+    for (let L = depth; L >= 1; L--) {
+      const k = L / depth
+      drawFace(g, this._shade(color, 0.30 + (1 - k) * 0.34), ddx * L * step, ddy * L * step, 1 - k * 0.045)
+    }
+
+    // GLOW = bloom a bassa risoluzione: la faccia frontale viene disegnata in un
+    // canvas 1/4 e poi upscalata col smoothing bilineare (che È il blur, gratis).
+    // NIENTE shadowBlur: in Skia è un blur CPU e con raggi da centinaia di px
+    // era la voce più cara di tutto il frame.
+    if (opts.glow) {
+      const gf = 4
+      const gw = Math.max(4, Math.round(cw / gf))
+      const gh = Math.max(4, Math.round(chh / gf))
+      if (!c.glow) { c.glow = document.createElement('canvas') }
+      const gcv = c.glow
+      if (gcv.width !== gw || gcv.height !== gh) { gcv.width = gw; gcv.height = gh }
+      const gg = gcv.getContext('2d')
+      gg.setTransform(1, 0, 0, 1, 0, 0)
+      gg.clearRect(0, 0, gw, gh)
+      gg.save()
+      gg.scale(1 / gf, 1 / gf)
+      // il canvas del glow ha il suo ox/oy: riusiamo la stessa geometria
+      drawFace(gg, color, 0, 0, 1)
+      gg.restore()
+      g.globalCompositeOperation = 'lighter'
+      const passes = [[1.00, 0.62], [1.20, 0.42], [1.52, 0.22]]
+      for (let i = 0; i < passes.length; i++) {
+        const sc = passes[i][0], al = passes[i][1]
+        const w2 = cw * sc, h2 = chh * sc
+        g.globalAlpha = al
+        g.drawImage(gcv, 0, 0, gw, gh, (cw - w2) / 2, (chh - h2) / 2, w2, h2)
+      }
+      g.globalAlpha = 1
+      g.globalCompositeOperation = 'source-over'
+    }
+
+    // Faccia frontale nitida, sopra il bloom
+    drawFace(g, color, 0, 0, 1)
+
+    c.key = key; c.qY = qY; c.qX = qX; c.t = now
+    c.padX = padX; c.cy = chh / 2
+    c.w = cw; c.h = chh
+    c.rotY = rotY; c.rotX = rotX
+    return c
+  }
+
   // Adatta la dimensione del font perché TUTTO il testo entri nella larghezza
   // disponibile (senza tagliare le lettere ai bordi). Ritorna la size in px.
   this.fitBigTextSize = (ctx, text, maxW, wantedSize, font, weight = 'bold') => {
@@ -1152,25 +1360,20 @@ function Client () {
       // così è leggibile per intero invece di essere tagliata ai bordi.
       const maxW = W * 0.92
       const size = this.fitBigTextSize(ctx, t.text, maxW, wanted, font)
-      ctx.font = `bold ${size}px "${font}"`
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
       // Wobble ridotto in proporzione: un testo largo non deve uscire dallo schermo
+      ctx.font = `bold ${size}px "${font}"`
       const slack = Math.max(0, (W - ctx.measureText(t.text).width) / 2)
       const wobble = Math.min(50, slack * 0.5)
       const x = W / 2 + Math.sin(age * 0.001 + i * 2) * wobble
       const y = H / 2 + Math.cos(age * 0.0015 + i * 1.5) * 30
       const alpha = 0.5 + 0.4 * (1 - age / (t.ttl || 8000))
+      // TESTO 3D (prospettiva per-carattere + estrusione), cache per scritta
+      t._age3d = age
+      const c3 = this.text3DCanvas(t, t.text, size, font, t.color || '#ff10f0', { glow: true })
       ctx.globalAlpha = alpha
-      ctx.strokeStyle = t.color || '#ff10f0'
-      ctx.lineWidth = 6
-      ctx.shadowColor = t.color || 'rgba(255,16,240,0.6)'
-      ctx.shadowBlur = 24
-      ctx.strokeText(t.text, x, y)
-      ctx.globalAlpha = alpha * 0.2
-      ctx.fillStyle = '#ffffff'
-      ctx.shadowBlur = 0
-      ctx.fillText(t.text, x, y)
+      ctx.drawImage(c3.canvas, Math.round(x - c3.w / 2), Math.round(y - c3.h / 2))
       ctx.restore()
     }
     if (this.bigTextMode) {
@@ -1195,7 +1398,7 @@ function Client () {
   this.drawBigTexts = (ctx,W,gridH) => {
     if(!this.bigTexts.length&&!this.bigTextMode){return}
     const now=performance.now()
-    const cols=['#f5efe6','#ef8f7d','#2e9cc3','#c81e4e','#ff4fd8']
+    const cols=this.bigTextPalette
     for(let i=this.bigTexts.length-1;i>=0;i--){
       const t=this.bigTexts[i]; const age=now-t.born
       // TTL dal bigText (impostato da MIDI) o default
@@ -1252,15 +1455,22 @@ function Client () {
       }
 
       const phase=Math.floor(age/160)%4
-      ctx.globalCompositeOperation='screen'
+      // 'screen' su canvas-to-canvas costava ~90ms/frame (misurato).
+      // 'lighter' e' additivo: e' cio' che serve a un glow neon ed e' veloce.
+      ctx.globalCompositeOperation='lighter'
       if(!flickOn){
         ctx.globalAlpha=0
       } else if(phase===2){ctx.globalAlpha=0.12}else if(phase===3){ctx.globalAlpha=0.4}else{ctx.globalAlpha=0.65}
 
       const colorIndex = (Math.floor(t.seed*10)+phase)%cols.length
-      ctx.fillStyle=t.color || cols[colorIndex]
+      const col3 = t.color || cols[colorIndex]
 
-      if(flickOn){ctx.fillText(t.text,x,y)}
+      if(flickOn){
+        // TESTO 3D (prospettiva + estrusione), cache per scritta: una drawImage
+        t._age3d = age
+        const c3 = this.text3DCanvas(t, t.text, size, btFont, col3, { glow: true })
+        ctx.drawImage(c3.canvas, Math.round(x - c3.padX), Math.round(y - c3.cy))
+      }
       ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over'
       ctx.restore()
     }

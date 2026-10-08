@@ -208,7 +208,7 @@ Più utility: `u_bass`, `u_mid`, `u_high`, `u_vol`, `u_flash` (transienti + **sc
 | `chromawarp` | `Alt+N` | curvatura cromatica |
 | `fracture` | `Alt+Q` | **vetro infranto**: shard Worley irregolari con rifrazione per-shard, dispersione cromatica, biselli, crepe capillari e caustiche |
 | `glow` | `Alt+L` | bagliore neon |
-| `motionmosh` | `Alt+F` | **datamosh vero**: stima il movimento fra i frame e trascina i pixel nel verso **opposto**, lasciando la scia (look P-frame) |
+| `motionmosh` | `Alt+F` | **datamosh + glitch**: stima il movimento e trascina i pixel nel verso **opposto** (scia P-frame), sopra ci stratifica il glitch digitale |
 | `bubble` | `Alt+E` | **schiuma di sapone**: due ottave di Worley, pellicole traslucide che deformano il feed, bordi di Plateau iridescenti |
 
 #### `motionmosh` — datamosh con stima del movimento
@@ -218,7 +218,28 @@ Sostituisce il vecchio `freezeloop`. Il principio è quello di un **P-frame senz
 2. **Scia**: `u_prev` viene campionato in direzione **opposta** al moto (`uv - mot*str`), con un secondo tap lungo per evitare bordi netti.
 3. **Feedback** con persistenza alta **ma con decadimento**: rientra sempre un po' di frame vivo, così le scie si accumulano senza saturare a bianco né morire.
 4. **Artefatti P-frame**: parte dei blocchi ha il vettore **quantizzato grosso**, una frazione è **congelata** (vettore 0: un'immagine ferma trascinata sopra uno sfondo che si muove), qualcuno **salta**, e i canali R/B sono spostati lungo il vettore (chroma trail da compressione).
-5. **Audio**: bassi = trascinamento e quota di blocchi congelati, mid = numero di blocchi e raggio di ricerca, alti = separazione chroma e grana, `u_flash` = kick casuale su tutti i vettori, `u_drop` = saltello di campo, `regime` = aggressività della quantizzazione, `drive` = forza master.
+5. **Sopra, il GLITCH** (tutto quantizzato in tempo, `floor(u_time*rate)`: scatta, non anima):
+   - **tearing di righe**: righe o gruppi di righe spostati a caso, con righe pescate da una vicina e "byte shift" per banda (la parte che rientra dal bordo è sbagliata);
+   - **macroblocchi**: blocchi copiati da un'altra zona dello schermo con salti grossi, e blocchi "incastrati" che ripetono il frame precedente;
+   - **RGB burst** ad impulsi: R/B pescati fino a 26 px di distanza, lungo il vettore di moto **e** una direzione random per blocco, con hue che scatta;
+   - **databending**: streak di pixel-sort (massimo di luminanza su 4 tap dentro le bande).
+6. **Il posterize è stato eliminato**: quantizzava il colore su 5–13 livelli piatti e leggeva come "posterize", non come glitch. Ora la quantizzazione resta solo su ~10% dei blocchi al 50%, cioè un difetto di compressione.
+7. **L'immagine resta leggibile sotto il glitch**: `live` è ancorato all'`uv` originale e solo i layer di glitch campionano coordinate strappate; coperture limitate e magnitudini capped (tear ≤ 0.12 uv, salto blocco ≤ 0.55 uv, chroma ≤ 26 px). Volume basso = immagine riconoscibile con macroblocchi e bande; volume alto = distruzione pesante.
+
+**Audio**: bassi = trascinamento e quota di blocchi congelati, mid = numero di blocchi e raggio di ricerca, alti = separazione chroma e grana, `u_flash` = kick casuale su tutti i vettori, `u_drop` = saltello di campo, `regime` = aggressività della quantizzazione, `drive` = forza master.
+
+**Misurato su GPU reale** (42 casi per versione, sequenza a 2 frame con moto vero + run di 24 frame in feedback):
+
+| metrica | nuovo | vecchio |
+|---|---|---|
+| glError / NaN / white % | 0 / 0 / 0 | 0 / 0 / 0 |
+| MAD vs input (0–255) | **68.5** | 59.9 |
+| posterize: livelli distinti (patch liscia, input 65) | **96.5** | 71.7 |
+| posterize: buchi interni istogramma | **0.059** | 0.402 |
+| posterize: massa del bin massimo | **0.033** | 0.278 |
+| glitch: salti di riga per riga | **0.172** | 0.126 |
+| glitch: std chroma fra i tick | **3.93** | 1.13 |
+| freeze-then-jump (intra-tick / cross-tick) | **0 / 9.3** | 0 / 0 |
 
 #### `bubble` — schiuma (foam)
 Due ottave di **Worley** (`cellular2x2x2`) combinate in `min`: una massa di celle piccole, non più quattro bolle giganti. L'`F2-F1` dell'ottava vincente disegna la **rete di bordi di Plateau** dove tre celle si incontrano, quindi le pellicole hanno giunzioni luminose e spessori sottili.
@@ -293,6 +314,65 @@ Ora l'apertura passa da `dialog.showOpenDialog` nel **processo main** (`window.a
 - `client.beginModal()` / `endModal()` — mentre `_modal > 0`, `update()` **salta feed, shader e terminale** e non chiama `clear()`, così resta a schermo l'ultimo frame invece di un fondo nero.
 - il file viene letto nel processo main (il renderer non può chiedere path arbitrari: `fs:readFileSync` ha una whitelist) e il contenuto arriva già pronto.
 - c'è anche `dialog.saveFile` + `fs:writeChosen` per l'esportazione.
+
+## MIDI — output multiplo (IAC + USB insieme)
+
+Si possono tenere attivi **più device di output contemporaneamente**. Caso d'uso: mandare le stesse note all'**IAC Driver** (→ Ableton Live) **e** via **USB** all'hardware esterno (es. Ableton Move) nello stesso momento.
+
+| Comando | Effetto |
+|---------|---------|
+| `midi:<n>` | **toggle**: aggiunge il device alla selezione, o lo toglie se c'è già |
+| `midi:<n>!` | **esclusiva**: solo quel device, azzera gli altri |
+| `midi:0,2` | selezione esatta: solo i device elencati |
+| `midi:-1` | azzera tutta la selezione |
+| `mididevices` | elenca input e output; quelli attivi sono marcati `(SELEZIONATO)` |
+
+Quindi per il doppio invio: `midi:0` poi `midi:1` → entrambi attivi. Il terminale mostra la destinazione corrente (`toOutputString`).
+
+### Clock separato dalle note
+
+Mandando note a due device, Ableton riceverebbe il **clock da due sorgenti** e andrebbe in conflitto di tempo. Il clock ha quindi una selezione **separata**:
+
+| Comando | Effetto |
+|---------|---------|
+| `midiclock:<n>` / `midiclock:0,2` / `midiclock:<n>!` | stessa sintassi di `midi:`, ma per clock e transport |
+| `midiclock:-1` | nessun device riceve il clock |
+
+Se non imposti nulla, il clock segue **tutti** gli output selezionati (comportamento storico). Esempio tipico: note a IAC + Move, clock **solo** a IAC → `midiclock:0!`.
+
+### Routing per-nota dalla patch
+
+L'operatore `:` della patch ha un argomento **port**: quella nota viene forzata su UNA porta specifica e **scavalca** la selezione. Utile per mandare un pattern a IAC e un altro al Move dallo stesso patch.
+
+## Testo 3D e palette
+
+I big text sono renderizzati in **3D**:
+
+- **prospettiva per blocco** — il testo è diviso in massimo 6 blocchi, ognuno proiettato con la prospettiva del suo centro, mentre la scritta ruota lentamente attorno all'asse verticale e si inclina sull'asse orizzontale (angoli sfasati dal seed, quindi ogni scritta ruota a modo suo);
+- **estrusione** a 8 strati dietro la faccia frontale, tinti della stessa famiglia di colore;
+- **glow neon** — bloom a bassa risoluzione (vedi sotto).
+
+### Palette
+
+Tutti i colori delle scritte vengono da `client.bigTextPalette`: **rosa shock**, **viola**, **verde fluo**, **petrolio** — solo tinte sgargianti, nessun colore spento. La usa sia `Alt+W` sia il comando `text:`.
+
+### Costo: da 164 ms/frame a 2.3 ms
+
+Il primo tentativo costava **164 ms per frame** con due scritte a schermo. Tre cause, trovate con un profiler per-sezione:
+
+| Causa | Perché | Fix |
+|-------|--------|-----|
+| **`shadowBlur`** | in Skia è un blur **CPU**: con raggi da centinaia di px era la voce più cara di tutto il frame | il glow è un **bloom a bassa risoluzione**: la faccia frontale viene disegnata in un canvas 1/4 e upscalata col smoothing bilineare (che *è* il blur, gratis), in 3 passate additive |
+| **231 fillText per rigenerazione** | un fillText per carattere × 11 strati di estrusione | il testo è disegnato a **blocchi** (max 6): la prospettiva è quella del centro del blocco → ~60 fillText |
+| **`globalCompositeOperation='screen'`** | il costo non era la `drawImage` (0.005 ms) ma il blend | **`lighter`** (additivo): è anche il blend giusto per un neon |
+
+In più la rotazione è **quantizzata** (0.07 rad) con un intervallo minimo di 110 ms fra rigenerazioni, quindi il costo è ammortizzato.
+
+### Font
+
+**34 famiglie** display (i 4 dafont originali + 30 da Google Fonts, OFL). Sono state **misurate una per una** (10 fillText a 200px con sync forzato) e **quattro sono state tolte** perché la rasterizzazione dei loro glifi costa 35–106 ms per rigenerazione: `Rubik Wet Paint` (106 ms), `Ghastly Panic` (38 ms), `Sixtyfour` (37 ms), `Eater` (35 ms) — sono font COLRv1/outline patched, bellissimi ma insostenibili a schermo. Tutte le altre stanno sotto i 15 ms.
+
+Il CSS (`links/bigtext-fonts.css`, 3.1 MB) **non è più caricato all'avvio**: si carica in background nel prefetch, così non pesa né sul boot né sulla prima scritta.
 
 ## Modelli 3D — Poly Haven (default) · Thingiverse (opzionale)
 

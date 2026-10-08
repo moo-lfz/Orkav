@@ -29,7 +29,21 @@ function Commander (client) {
   this.actives = {
     osc: (p) => { client.io.osc.select(p.int) },
     udp: (p) => { client.io.udp.selectOutput(p.x); if (p.y !== null) { client.io.udp.selectInput(p.y) } },
-    midi: (p) => { client.io.midi.selectOutput(p.x); if (p.y !== null) { client.io.midi.selectInput(p.y) } },
+    // midi:<n> toggle · midi:<n>! esclusiva · midi:0,2 esatta · midi:-1 azzera
+    // Passiamo la STRINGA grezza: la forma con la virgola non passerebbe da p.x.
+    midi: (p) => {
+      const raw = (p.str || '').trim()
+      client.io.midi.selectOutput(raw.length ? raw : p.x)
+      if (p.y !== null && !isNaN(p.y)) { client.io.midi.selectInput(p.y) }
+    },
+    // midiclock:<n> — quali device ricevono CLOCK/transport (stessa sintassi di
+    // midi:). Serve quando si manda a IAC + USB insieme: Ableton che riceve il
+    // clock da due sorgenti lo somma e va in conflitto. midiclock:-1 = nessuno.
+    midiclock: (p) => {
+      const raw = (p.str || '').trim()
+      if (!raw) { console.log('Commander', 'midiclock:<n> | <n>! | 0,2 | -1  (vuoto = tutti gli output selezionati)'); return }
+      client.io.midi.selectClockOutputs(raw)
+    },
     mididevices: (p) => {
       const outs = client.io.midi.outputs || []
       const ins = client.io.midi.inputs || []
@@ -37,7 +51,8 @@ function Commander (client) {
       outs.forEach((d, i) => console.log('Commander', `  [${i}] ${d.name}` + (client.io.midi.outputIndexes.includes(i) ? ' (SELEZIONATO)' : '')))
       console.log('Commander', '=== MIDI INPUT ===')
       ins.forEach((d, i) => console.log('Commander', `  [${i}] ${d.name}` + (client.io.midi.inputIndex === i ? ' (SELEZIONATO)' : '')))
-      console.log('Commander', 'Seleziona output: midi:<indice>  (es. midi:1)')
+      console.log('Commander', 'Output attivi:', client.io.midi.outputIndexes.map(i => `[${i}] ${outs[i] ? outs[i].name : '?'}`).join(' + ') || 'None')
+      console.log('Commander', 'midi:<n> aggiunge/toglie · midi:<n>! solo quello · midi:0,2 esatta · midi:-1 azzera')
       client._modsNotice = { names: outs.map((d, i) => `[${i}] ${d.name}`), until: performance.now() + 5000 }
     },
     ip: (p) => { client.io.setIp(p.str) },
@@ -322,7 +337,7 @@ function Commander (client) {
     text: (p, origin) => {
       const text = p.str || p._str || ''
       if (!text) { console.warn('[Commander] Specifica un testo (es. text:HELLO)'); return }
-      const colors = ['#ffb545', '#4ade80', '#b39dff', '#ff4fd8', '#ef8f7d']
+      const colors = (client.bigTextPalette && client.bigTextPalette.length) ? client.bigTextPalette : ['#ff10f0', '#b39dff', '#39ff14', '#00ffd0']
       const color = colors[Math.floor(Math.random() * colors.length)]
       const font = client.background ? client.background.currentFont : 'Impact'
       client.bigTexts.push({
