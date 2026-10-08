@@ -208,11 +208,17 @@ Più utility: `u_bass`, `u_mid`, `u_high`, `u_vol`, `u_flash` (transienti + **sc
 | `chromawarp` | `Alt+N` | curvatura cromatica |
 | `fracture` | `Alt+Q` | **vetro infranto**: shard Worley irregolari con rifrazione per-shard, dispersione cromatica, biselli, crepe capillari e caustiche |
 | `glow` | `Alt+L` | bagliore neon |
-| `freezeloop` | `Alt+F` | **congela parti dello schermo e le fa roteare in loop di pixel** (feedback via `u_prev`) |
+| `motionmosh` | `Alt+F` | **datamosh vero**: stima il movimento fra i frame e trascina i pixel nel verso **opposto**, lasciando la scia (look P-frame) |
 | `bubble` | `Alt+E` | **schiuma di sapone**: due ottave di Worley, pellicole traslucide che deformano il feed, bordi di Plateau iridescenti |
 
-#### `freezeloop` — freeze + feedback
-Lo schermo è diviso in una griglia di blocchi. Alcuni blocchi vengono **congelati** (selezione da hash + bassi + flash) e smettono di leggere il feed live: campionano il **frame precedente** con una rotazione (`twirl`) attorno al centro del blocco e se lo rimandano indietro. Ne risulta un **loop chiuso di pixel** che gira su se stesso. Un decadimento < 1 più una minima iniezione di frame live tengono il loop stabile (non satura e non muore), e una leggera rotazione di tinta lo fa "girare" visibilmente.
+#### `motionmosh` — datamosh con stima del movimento
+Sostituisce il vecchio `freezeloop`. Il principio è quello di un **P-frame senza I-frame**: si stima dove sta andando il contenuto e si trascinano i pixel **nel verso opposto**, accumulando una scia.
+
+1. **Stima**: griglia di blocchi (quanti = parametri + audio). Block-match brute force 5×5 con SAD su tap a croce fra `u_prev` e `u_tex`; costo del match oltre soglia = blocco disoccluso. In più un flusso locale dal gradiente spaziale, che liscia il campo sotto il blocco, e una deriva sintetica di rumore così la scia esiste anche se il feed è fermo.
+2. **Scia**: `u_prev` viene campionato in direzione **opposta** al moto (`uv - mot*str`), con un secondo tap lungo per evitare bordi netti.
+3. **Feedback** con persistenza alta **ma con decadimento**: rientra sempre un po' di frame vivo, così le scie si accumulano senza saturare a bianco né morire.
+4. **Artefatti P-frame**: parte dei blocchi ha il vettore **quantizzato grosso**, una frazione è **congelata** (vettore 0: un'immagine ferma trascinata sopra uno sfondo che si muove), qualcuno **salta**, e i canali R/B sono spostati lungo il vettore (chroma trail da compressione).
+5. **Audio**: bassi = trascinamento e quota di blocchi congelati, mid = numero di blocchi e raggio di ricerca, alti = separazione chroma e grana, `u_flash` = kick casuale su tutti i vettori, `u_drop` = saltello di campo, `regime` = aggressività della quantizzazione, `drive` = forza master.
 
 #### `bubble` — schiuma (foam)
 Due ottave di **Worley** (`cellular2x2x2`) combinate in `min`: una massa di celle piccole, non più quattro bolle giganti. L'`F2-F1` dell'ottava vincente disegna la **rete di bordi di Plateau** dove tre celle si incontrano, quindi le pellicole hanno giunzioni luminose e spessori sottili.
@@ -251,8 +257,42 @@ Erano due cose, entrambe risolte:
 
 | Causa | Prima | Ora |
 |-------|-------|-----|
+| **wasm di MediaPipe** | il `FilesetResolver` scaricava **9.4 MB** di `vision_wasm_internal.wasm` **in linea**, mentre l'utente aspettava | prefetch in background dopo il boot (bundle + wasm SIMD + modello, richieste `quiet`) |
 | Pool maschere | **110 canvas 512×512** (~115 MB) + 110 `fillText` da 420px **sincroni** in un solo frame all'attivazione | lista di stringhe + rasterizzazione **on demand** a 256×256, cache LRU di 24 |
+| Shader maschera | compilato al primo `Alt+H` | **precompilato nel prefetch** |
 | `detectForVideo` | ogni frame, sul main thread | un frame sì e uno no (~30 Hz): la maschera resta incollata al viso |
+
+**Misurato** (init completo del face tracker, da freddo): **10 544 ms → 3 115 ms**. `Alt+H` (pool + shader): **442 ms → 33 ms**.
+
+### Aggancio della maschera
+
+Il glifo dell'emoji viene **centrato sul canvas misurando il suo bounding box reale** (`actualBoundingBoxAscent/Descent`) e riscalato a riempire l'86% del canvas: prima si disegnava a coordinate fisse (`128, 215`) e il glifo finiva spostato in basso, quindi la maschera non combaciava col viso.
+
+La dimensione è `max(faceW × W × 2.5, faceH × H × 1.75)`: si adatta sia alla larghezza sia all'**altezza** del viso, quindi quando ti avvicini alla camera la maschera cresce invece di restare piccola (~+25% rispetto a prima). L'offset verticale è una frazione della dimensione (`+3%`) e non più 20px fissi, che su schermi grandi non scalavano.
+
+## GIF: perché non si caricavano
+
+Tre cause, tutte risolte.
+
+| Problema | Causa | Fix |
+|----------|-------|-----|
+| **La chiave Giphy spariva** | `localStorage` su origine `file://` **non viene scritto su disco** in Electron: dopo ogni riavvio `giphyKey` era `null` e la sorgente primaria veniva saltata | la chiave (e `bg_dir`) si salvano anche in `userData/orkav-cache` e si ripristinano al boot con `loadPersisted()` |
+| **GIF enormi che non finivano mai** | la ricerca Commons restituiva GIF da 5–20 MB a 1796×1820 | filtro a **2 MB / 900px**, ordinamento per peso percepito e scelta fra i più leggeri |
+| **Nessun timeout** | se una GIF non arrivava, lo stormo restava vuoto per sempre | **timeout 8 s**: si passa alla sorgente successiva |
+
+Catena delle sorgenti: **Giphy** (GIF ~200px, la più veloce) → **Commons per tag** → **Commons per categoria** (`Category:Animated GIF files`, sempre disponibile senza chiave) → frame procedurali.
+
+> Dopo l'aggiornamento la chiave Giphy va inserita **una volta** con `giphykey:<LA_TUA_KEY>`: da lì in poi resta su disco.
+
+## Cmd+O: apertura file nativa
+
+`Cmd+O` apriva il pannello con un `<input type="file">` **dal processo di rendering**: nel frattempo il render loop continuava a pieno regime e il pannello di sistema compariva dopo secondi.
+
+Ora l'apertura passa da `dialog.showOpenDialog` nel **processo main** (`window.api.dialog`), il renderer non fa nulla e si mette in **pausa**:
+
+- `client.beginModal()` / `endModal()` — mentre `_modal > 0`, `update()` **salta feed, shader e terminale** e non chiama `clear()`, così resta a schermo l'ultimo frame invece di un fondo nero.
+- il file viene letto nel processo main (il renderer non può chiedere path arbitrari: `fs:readFileSync` ha una whitelist) e il contenuto arriva già pronto.
+- c'è anche `dialog.saveFile` + `fs:writeChosen` per l'esportazione.
 
 ## Modelli 3D — Poly Haven (default) · Thingiverse (opzionale)
 
@@ -405,7 +445,7 @@ In più `_tuneMaterials()` normalizza i materiali appena caricati: `envMapIntens
 | Tasto | Azione |
 |-------|--------|
 | `Alt+V` | prompt commander `fx:` |
-| `Alt+T/D/J/K/R/S/N/Q/L/F/E` | shader FX (brokentv/datamosh/glitch/ameba/fractal/displace/chromawarp/fracture/glow/freezeloop/bubble) |
+| `Alt+T/D/J/K/R/S/N/Q/L/F/E` | shader FX (brokentv/datamosh/glitch/ameba/fractal/displace/chromawarp/fracture/glow/**motionmosh**/bubble) |
 | `Alt+Z` | webcam (attiva anche la maschera) |
 | `Alt+H` | maschera emoji sul viso |
 | `Alt+P` | modello 3D (Poly Haven / Thingiverse) |

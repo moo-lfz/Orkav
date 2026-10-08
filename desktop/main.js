@@ -1,5 +1,6 @@
 'use strict'
-const { app, BrowserWindow, Menu, ipcMain, shell, session, nativeImage, systemPreferences } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, shell, session, nativeImage, systemPreferences, dialog } = require('electron')
+const fs = require('fs')
 const path = require('path')
 
 const { setupSystemInfoService, setupIpcHandlers: setupSystemInfoIpc } = require('./services/systeminfo-service')
@@ -186,6 +187,7 @@ function setupMenu(app, win) {
         { label: 'Chromawarp', accelerator: 'Alt+N', click: () => win.webContents.send('menu:action', 'Alt+N') },
         { label: 'Fracture', accelerator: 'Alt+Q', click: () => win.webContents.send('menu:action', 'Alt+Q') },
         { label: 'Glow', accelerator: 'Alt+L', click: () => win.webContents.send('menu:action', 'Alt+L') },
+        { label: 'Motion Mosh (datamosh)', accelerator: 'Alt+F', click: () => win.webContents.send('menu:action', 'Alt+F') },
         { type: 'separator' },
         { label: 'TOTAL GLITCH / PANIC', accelerator: 'Alt+Shift+X', click: () => win.webContents.send('menu:action', 'fxTotalGlitch') }
       ]
@@ -295,6 +297,64 @@ function setupMenuHandlers() {
   ipcMain.on('menu:action', (event, action) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('menu:action', action)
+    }
+  })
+
+  // Apertura file NATIVA nel processo main.
+  // Prima si usava un <input type=file> nel renderer: il click apriva il pannello
+  // di sistema dal processo di rendering, che nel frattempo continuava a
+  // renderizzare a pieno regime → il dialogo ci metteva secondi a comparire.
+  // Con dialog.showOpenDialog il renderer non fa nulla e può mettersi in pausa.
+  ipcMain.handle('dialog:openFile', async (event, opts) => {
+    const o = opts || {}
+    const properties = Array.isArray(o.properties) && o.properties.length ? o.properties : ['openFile']
+    const filters = Array.isArray(o.filters) && o.filters.length ? o.filters : [{ name: 'Orca patch', extensions: ['orca'] }]
+    try {
+      const res = await dialog.showOpenDialog(mainWindow, { properties, filters })
+      if (res.canceled || !res.filePaths || !res.filePaths.length) { return null }
+      const out = { paths: res.filePaths, names: res.filePaths.map((p) => path.basename(p)), content: null }
+      // Legge QUI il contenuto: il renderer non può chiedere path arbitrari
+      // (fs:readFileSync ha una whitelist) e il file scelto dall'utente è
+      // implicitamente autorizzato.
+      if (res.filePaths.length === 1) {
+        try {
+          const st = fs.statSync(res.filePaths[0])
+          if (st.size <= 8 * 1024 * 1024) { out.content = fs.readFileSync(res.filePaths[0], 'utf8') }
+        } catch (e) { console.warn('[dialog:openFile] lettura:', e && e.message) }
+      }
+      return out
+    } catch (e) {
+      console.warn('[dialog:openFile]', e && e.message)
+      return null
+    }
+  })
+
+  // Salvataggio nativo (stesso motivo)
+  ipcMain.handle('dialog:saveFile', async (event, opts) => {
+    const o = opts || {}
+    try {
+      const res = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: o.defaultPath || undefined,
+        filters: Array.isArray(o.filters) && o.filters.length ? o.filters : [{ name: 'Orca patch', extensions: ['orca'] }]
+      })
+      if (res.canceled || !res.filePath) { return null }
+      return { path: res.filePath }
+    } catch (e) {
+      console.warn('[dialog:saveFile]', e && e.message)
+      return null
+    }
+  })
+
+  // Scrittura su un path scelto dall'utente tramite il dialogo nativo.
+  // (fs-service ha una whitelist di directory, quindi il salvataggio passa da qui.)
+  ipcMain.handle('fs:writeChosen', (event, { path: filePath, content }) => {
+    try {
+      if (typeof filePath !== 'string' || !filePath) return false
+      fs.writeFileSync(filePath, String(content == null ? '' : content), 'utf8')
+      return true
+    } catch (e) {
+      console.warn('[fs:writeChosen]', e && e.message)
+      return false
     }
   })
 

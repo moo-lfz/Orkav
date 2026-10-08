@@ -21,7 +21,7 @@ Ogni `*.frag` in `desktop/sources/shaders/` viene caricato automaticamente all'a
 | `chromawarp` | `Alt+N` | curvatura cromatica: le componenti RGB si curvano separatamente |
 | `fracture` | `Alt+Q` | **vetro infranto**: shard Worley, rifrazione per-shard, dispersione cromatica, crepe e caustiche |
 | `glow` | `Alt+L` | bagliore neon con bloom |
-| `freezeloop` | `Alt+F` | **congela parti dello schermo e le fa ruotare in loop di pixel** |
+| `motionmosh` | `Alt+F` | **datamosh**: stima il movimento e trascina i pixel nel verso opposto, lasciando la scia |
 | `bubble` | `Alt+E` | **schiuma di sapone**: Worley a 2 ottave, pellicole traslucide che deformano il feed |
 | `copy` | — | shader di servizio (pass-through usato dal motore) |
 
@@ -32,15 +32,23 @@ spinta data da RMS/bassi. Velocità, verso e fase sono **indipendenti per linea*
 Aggiunge RGB split proporzionale allo spostamento, micro-glow sul bordo di ogni linea e
 scansione verticale. **Tutto il movimento vive sull'asse X**: nessuna caduta verticale.
 
-### `freezeloop` (Alt+F)
-1. Lo schermo è diviso in una **griglia di blocchi**.
-2. Alcuni blocchi vengono **congelati** (selezione da hash + bassi + flash + drop).
-3. I blocchi congelati smettono di leggere il feed live: campionano il **frame precedente**
-   (`u_prev`) con una **rotazione attorno al centro del blocco** (twirl) e se lo rimandano
-   indietro → **loop chiuso di pixel** che gira su se stesso.
-4. Un **decadimento < 1** più una minima iniezione di frame live tengono il loop stabile
-   (non satura a bianco, non muore a nero) e una leggera rotazione di tinta lo fa "girare".
-5. Bordo luminoso sui blocchi ghiacciati, brina/vetro sopra, bagliore al centro del vortice.
+### `motionmosh` (Alt+F) — datamosh con stima del movimento
+Sostituisce il vecchio `freezeloop`. È un **P-frame senza I-frame**: si stima dove
+sta andando il contenuto e si trascinano i pixel **nel verso opposto**, lasciando la scia.
+
+| Termine | Significato |
+|---------|-------------|
+| **stima del movimento** | griglia di blocchi; block-match brute force 5×5 con SAD su tap a croce fra `u_prev` e `u_tex`. Costo oltre soglia = blocco **disoccluso** |
+| **flusso locale** | gradiente spaziale + differenza temporale: liscia il campo *sotto* il blocco |
+| **scia** | `u_prev` campionato in direzione **opposta** al moto (`uv - mot*str`), con un secondo tap lungo per evitare bordi netti |
+| **decadimento** | la persistenza è alta ma rientra sempre un po' di frame vivo: le scie si accumulano senza saturare a bianco né morire |
+| **blocco congelato** | vettore forzato a 0: un'immagine ferma trascinata sopra uno sfondo che si muove |
+| **vettore quantizzato** | spostamento arrotondato a passi grossi: è l'artefatto che si riconosce come "compressione" |
+| **chroma trail** | R/B spostati lungo il vettore |
+
+Mappatura audio: bassi = trascinamento + quota di blocchi congelati, mid = numero
+di blocchi e raggio di ricerca, alti = chroma e grana, `u_flash` = kick casuale su
+tutti i vettori, `u_drop` = saltello di campo, `regime` = quantizzazione, `drive` = forza master.
 
 ### `bubble` (Alt+E) — schiuma di sapone
 Due ottave di **Worley** (`cellular2x2x2`) combinate in `min`: una massa di celle
@@ -112,7 +120,7 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 |-------|--------|
 | `Alt+V` | prompt commander `fx:` |
 | `Alt+T` / `Alt+D` / `Alt+J` / `Alt+K` / `Alt+R` / `Alt+S` / `Alt+N` / `Alt+Q` / `Alt+L` | shader: brokentv / datamosh / glitch / ameba / fractal / displace / chromawarp / fracture / glow |
-| `Alt+F` / `Alt+E` | shader: freezeloop / bubble |
+| `Alt+F` / `Alt+E` | shader: motionmosh / bubble |
 | `Alt+Shift+T` | tag successivo **solo per i modelli 3D** |
 | `Alt+Shift+X` | **TOTAL GLITCH + scritta PANICO multilingua** (uscita: `Esc` o di nuovo) |
 | `Esc` | reset totale |
@@ -231,7 +239,22 @@ I tag pilotano background, GIF e modelli 3D (`Cmd+Shift+T` per ciclare, `Cmd+W` 
 | **cache su disco** | `userData/orkav-cache/<chiave>.json`, scrittura atomica (tmp + rename) via IPC. `localStorage` su `file://` **non persiste** in Electron, quindi non basta |
 | **TTL** | vita della cache: l'indice Poly Haven dura 7 giorni |
 | **prefetch** | riscaldamento in background (`scripts/prefetch.js`): parte 2.5 s dopo il boot, una risorsa alla volta, solo in idle |
+| **ordine del prefetch** | three.js+loader → indice Poly Haven → **MediaPipe** (bundle, wasm SIMD da 9.4 MB, modello) → **MaskFX** |
 | **indicatore di caricamento** | `\| 3D props` / `/ net 2` a sinistra della telemetria di Orkav, sparisce dopo 10 s |
+
+---
+
+## 4c-bis. GIF, file locali e dialog nativo
+
+| Termine | Significato |
+|---------|-------------|
+| **persistenza su disco** | `localStorage` su `file://` non viene mai scritto in Electron: chiave Giphy e cartella locale si salvano in `userData/orkav-cache` e si ripristinano con `Background.loadPersisted()` |
+| **catena sorgenti GIF** | Giphy (~200px, veloce) → Commons per tag → Commons per **categoria** (`Category:Animated GIF files`, senza chiave) → frame procedurali |
+| **filtro GIF** | max 2 MB / 900px, ordinamento per peso percepito (`byte + width*400`), scelta fra i più leggeri |
+| **timeout GIF** | 8 s: se una GIF non arriva si passa alla sorgente successiva invece di restare fermi |
+| **finestra modale** | `client.beginModal()` / `endModal()`: mentre è aperta, `update()` salta feed, shader e terminale e non pulisce il canvas |
+| **`dialog:openFile`** | apertura file nel **processo main** (`dialog.showOpenDialog`). Il file viene letto lì: il renderer non può chiedere path arbitrari |
+| **`dialog:saveFile` + `fs:writeChosen`** | salvataggio su un path scelto dall'utente tramite il dialogo nativo |
 
 ---
 

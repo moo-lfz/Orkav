@@ -54,26 +54,60 @@ function Background (client) {
   this.swarmInterval = 8000; // default 8 seconds
 }
 
-// Chiave Giphy: si salva in localStorage, NON nel repo (era hardcoded).
+// Chiave Giphy: NON è nel repo. Si salva ANCHE SU DISCO (userData/orkav-cache)
+// perché localStorage su origine file:// in Electron non viene mai scritto su
+// disco: la chiave spariva ad ogni riavvio e le GIF tornavano a cadere sulle
+// sorgenti di ripiego. Era il motivo per cui "le GIF non si caricano".
 Background.prototype.setGiphyKey = function (k) {
   this.giphyKey = (k || '').trim() || null
   try {
     if (this.giphyKey) window.localStorage.setItem('giphy_key', this.giphyKey)
     else window.localStorage.removeItem('giphy_key')
   } catch (e) {}
-  console.log('[Background] Giphy key', this.giphyKey ? 'impostata' : 'rimossa')
+  if (window.Net) {
+    if (this.giphyKey) { Net.cacheSave('giphy_key', this.giphyKey) }
+    else { Net.cacheDrop('giphy_key').catch(() => {}) }
+  }
+  console.log('[Background] Giphy key', this.giphyKey ? 'impostata (salvata su disco)' : 'rimossa')
   return !!this.giphyKey
 }
 
-// Cartella locale di background/GIF (opzionale)
+// Cartella locale di background/GIF (opzionale) — stessa persistenza su disco
 Background.prototype.setLocalDir = function (d) {
   this.localDir = (d || '').trim() || null
   try {
     if (this.localDir) window.localStorage.setItem('bg_dir', this.localDir)
     else window.localStorage.removeItem('bg_dir')
   } catch (e) {}
+  if (window.Net) {
+    if (this.localDir) { Net.cacheSave('bg_dir', this.localDir) }
+    else { Net.cacheDrop('bg_dir').catch(() => {}) }
+  }
   console.log('[Background] cartella locale:', this.localDir || '(nessuna)')
   return this.localDir
+}
+
+// Ripristina chiave Giphy e cartella locale dalla cache su disco (async, al boot)
+Background.prototype.loadPersisted = async function () {
+  if (!window.Net) { return }
+  try {
+    if (!this.giphyKey) {
+      const k = await Net.cacheLoad('giphy_key', 0)
+      if (k && typeof k === 'string') {
+        this.giphyKey = k
+        try { window.localStorage.setItem('giphy_key', k) } catch (e) {}
+        console.log('[Background] Giphy key ripristinata dal disco')
+      }
+    }
+    if (!this.localDir) {
+      const d = await Net.cacheLoad('bg_dir', 0)
+      if (d && typeof d === 'string') {
+        this.localDir = d
+        try { window.localStorage.setItem('bg_dir', d) } catch (e) {}
+        console.log('[Background] cartella locale ripristinata dal disco:', d)
+      }
+    }
+  } catch (e) {}
 }
 
 // Chiave-tag per un canale ('bg' immagini, 'gif' stormo). Se il canale ha un
@@ -155,9 +189,14 @@ Background.prototype.loadSwarm = async function () {
 Background.prototype.tryNextGifSource = function () {
   const en = this.commonsTags[this.tagKeyFor('gif')]
   const enTag = Array.isArray(en) ? en[0] : (en || 'art')
-  // Giphy PRIMARIA (GIF piccole fixed_height_small, decodifica nativa browser).
-  // Commons solo fallback. Le key pubbliche Giphy possono dare 429 → fallback.
-  const sources = ['giphy', 'commons', 'procedural']
+  // Ordine delle sorgenti:
+  //   1) Giphy  — GIF piccole (~200px, fixed_height_small): la più veloce.
+  //      Richiede la chiave, che ora si persiste su disco (vedi setGiphyKey).
+  //   2) Commons per tag — GIF vere, tag-aware, ma pesanti: filtrate per dimensione.
+  //   3) Commons per categoria — sempre disponibile senza chiave, prende una GIF
+  //      animata a caso dalla categoria "Animated GIF files".
+  //   4) frame procedurali — ultima spiaggia, rete assente.
+  const sources = ['giphy', 'commons', 'commonscat', 'procedural']
   if (this.gifSourceIndex >= sources.length) {
     console.warn('Swarm', 'rete non disponibile: uso frame procedurali')
     this.gifSourceIndex = 0
@@ -167,6 +206,7 @@ Background.prototype.tryNextGifSource = function () {
   const s = sources[this.gifSourceIndex++]
   if (s === 'giphy') { this.fetchGiphy(enTag) }
   else if (s === 'commons') { this.fetchCommonsGif(enTag) }
+  else if (s === 'commonscat') { this.fetchCommonsGifCategory() }
   else { this.initSwarmFrames(this.makeProceduralFrames()) }
 }
 
@@ -188,21 +228,56 @@ Background.prototype.fetchGiphy = function (q) {
 
 // Fonte GIF affidabile: Wikimedia Commons (API pubblica, no key, CORS aperto).
 // Cerca "animated gif <tag>" — restituisce GIF animate reali con URL diretto.
+// FILTRO DIMENSIONE: molte GIF della Commons sono da 5-20 MB e a 1796×1820: il
+// caricamento non finiva mai e lo stormo restava vuoto. Preferiamo le più
+// leggere (max 3 MB) e, a parità di candidati validi, scegliamo tra le piccole.
 Background.prototype.fetchCommonsGif = function (tag) {
-  const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=' + encodeURIComponent('animated gif ' + tag) + '&gsrnamespace=6&gsrlimit=30&prop=imageinfo&iiprop=url|mime'
+  const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=' + encodeURIComponent('animated gif ' + tag) + '&gsrnamespace=6&gsrlimit=40&prop=imageinfo&iiprop=url|mime|size'
   this.fetchJSON(url, (json) => {
     const pages = json.query && json.query.pages
     if (!pages) { this.tryNextGifSource(); return }
-    const urls = []
-    for (const k in pages) {
-      const ii = pages[k].imageinfo && pages[k].imageinfo[0]
-      // Accetta sia image/gif che image/gif espliciti
-      if (ii && ii.url && /\.gif($|\?)/i.test(ii.url)) { urls.push(ii.url) }
-    }
-    if (!urls.length) { this.tryNextGifSource(); return }
-    const gifUrl = urls[Math.floor(Math.random() * urls.length)]
-    this.useGifUrl(gifUrl)
+    this._pickCommonsGif(pages, 'search')
   }, () => { this.tryNextGifSource() })
+}
+
+// Categoria "Animated GIF files": sempre disponibile senza chiave, nessun tag.
+// È il ripiego che garantisce GIF vere anche quando la ricerca per tag non trova
+// nulla di caricabile.
+Background.prototype.fetchCommonsGifCategory = function () {
+  const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=categorymembers&gcmtitle=Category:Animated_GIF_files&gcmtype=file&gcmlimit=40&prop=imageinfo&iiprop=url|mime|size'
+  this.fetchJSON(url, (json) => {
+    const pages = json.query && json.query.pages
+    if (!pages) { this.tryNextGifSource(); return }
+    this._pickCommonsGif(pages, 'category')
+  }, () => { this.tryNextGifSource() })
+}
+
+// Sceglie una GIF caricabile fra le pagine restituite dall'API.
+// Preferisce le LEGGERE e a risoluzione contenuta: lo stormo le disegna 17
+// volte per frame a 90px di altezza, quindi una GIF da 1800px non aggiunge
+// nulla e costa molto (download + decodifica + 17 drawImage).
+Background.prototype._pickCommonsGif = function (pages, why) {
+  const MAXB = 2 * 1024 * 1024
+  const MAXW = 900
+  const good = [], huge = []
+  for (const k in pages) {
+    const ii = pages[k].imageinfo && pages[k].imageinfo[0]
+    if (!ii || !ii.url) { continue }
+    if (!/\.gif($|\?)/i.test(ii.url)) { continue }
+    const sz = ii.size || 0
+    const w = ii.width || 0
+    if ((sz && sz > MAXB) || (w && w > MAXW * 2)) { huge.push({ url: ii.url, sz: sz, w: w }) }
+    else { good.push({ url: ii.url, sz: sz, w: w }) }
+  }
+  let pool = good.length ? good : huge
+  if (!pool.length) { this.tryNextGifSource(); return }
+  // Ordina per "peso percepito" (byte + risoluzione) e pesca fra i più leggeri:
+  // resta varietà, ma si evitano i casi da 20 MB che non finivano mai.
+  pool.sort((a, b) => (a.sz + a.w * 400) - (b.sz + b.w * 400))
+  const top = pool.slice(0, Math.max(1, Math.ceil(pool.length * 0.6)))
+  const pick = top[Math.floor(Math.random() * top.length)].url
+  console.log('[Background] GIF da Commons (' + why + '):', good.length, 'leggere /', huge.length, 'pesanti')
+  this.useGifUrl(pick)
 }
 
 // Usa direttamente l'URL nell'<img> nativo: il browser decodifica/Anima la GIF
@@ -223,8 +298,26 @@ Background.prototype.ensureGifHost = function () {
 
 Background.prototype.setSwarmData = function (src) {
   const img = this.ensureGifHost()
-  img.onload = () => { if (img.naturalWidth) { this.initSwarm() } }
-  img.onerror = () => { this.tryNextGifSource() }
+  // Le GIF della Commons possono pesare diversi MB: senza timeout si resta
+  // fermi su un caricamento che non finisce mai ("le GIF non si caricano").
+  // Se in 8 s non è pronta, si passa alla sorgente successiva.
+  if (this._gifTimer) { clearTimeout(this._gifTimer) }
+  const token = (this._gifToken = (this._gifToken || 0) + 1)
+  this._gifTimer = setTimeout(() => {
+    if (token !== this._gifToken) { return }
+    console.warn('[Background] GIF troppo lenta (>8s), provo un\'altra sorgente')
+    this.tryNextGifSource()
+  }, 8000)
+  img.onload = () => {
+    if (token !== this._gifToken) { return }
+    if (this._gifTimer) { clearTimeout(this._gifTimer); this._gifTimer = null }
+    if (img.naturalWidth) { this.initSwarm() }
+  }
+  img.onerror = () => {
+    if (token !== this._gifToken) { return }
+    if (this._gifTimer) { clearTimeout(this._gifTimer); this._gifTimer = null }
+    this.tryNextGifSource()
+  }
   img.src = src
 }
 

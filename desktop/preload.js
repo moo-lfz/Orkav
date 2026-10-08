@@ -23,7 +23,12 @@ contextBridge.exposeInMainWorld('api', {
     readdirSync: (path) => ipcRenderer.invoke('fs:readdirSync', path),
     readFileSync: (path, encoding) => ipcRenderer.invoke('fs:readFileSync', { path, encoding }),
     existsSync: (path) => ipcRenderer.invoke('fs:existsSync', path),
-    statSync: (path) => ipcRenderer.invoke('fs:statSync', path)
+    statSync: (path) => ipcRenderer.invoke('fs:statSync', path),
+    writeChosen: (path, content) => ipcRenderer.invoke('fs:writeChosen', { path, content })
+  },
+  dialog: {
+    openFile: (opts) => ipcRenderer.invoke('dialog:openFile', opts),
+    saveFile: (opts) => ipcRenderer.invoke('dialog:saveFile', opts)
   },
   cache: {
     get: (key) => ipcRenderer.invoke('cache:get', key),

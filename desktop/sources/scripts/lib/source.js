@@ -4,6 +4,7 @@
 /* global MouseEvent */
 
 function Source (client) {
+  this.client = client
   this.cache = {}
 
   this.install = () => {
@@ -18,8 +19,32 @@ function Source (client) {
     this.cache = {}
   }
 
+  // Apertura file. Con Electron usiamo il dialogo NATIVO nel processo main
+  // (window.api.dialog): il renderer non apre nulla e può mettere in pausa il
+  // render loop mentre il pannello è aperto. Prima, con <input type=file>, il
+  // click apriva il pannello dal processo di rendering che continuava a
+  // renderizzare a pieno regime → il dialogo compariva dopo secondi.
   this.open = (ext, callback, store = false) => {
     console.log('Source', 'Open file..')
+    if (window.api && window.api.dialog && window.api.dialog.openFile) {
+      const client = this.client
+      if (client) { client.beginModal('open') }
+      window.api.dialog.openFile({ filters: [{ name: ext.toUpperCase(), extensions: [ext] }] })
+        .then((res) => {
+          if (!res || !res.paths || !res.paths.length) { return }
+          const name = res.names && res.names[0] ? res.names[0] : res.paths[0]
+          if (res.content != null) {
+            if (name.indexOf('.' + ext) < 0) { console.warn('Source', `Skipped ${name}`); return }
+            if (store) { this.cache[name] = res.content }
+            callback({ name: name, path: res.paths[0] }, res.content)
+          } else {
+            console.warn('Source', 'Contenuto non leggibile:', name)
+          }
+        })
+        .catch((e) => console.warn('Source', 'dialog:', e && e.message))
+        .finally(() => { if (client) { client.endModal('open') } })
+      return
+    }
     const input = document.createElement('input')
     input.type = 'file'
     input.onchange = (e) => {

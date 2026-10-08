@@ -370,8 +370,13 @@ FaceTracker.prototype._stopMaskSwapTimer = function () {
 }
 
 // Renderizza un'emoji nativa (font di sistema) su canvas trasparente.
-// 256×256 invece di 512×512: la maschera sullo schermo è ~300px, quindi 512
+// 256×256 invece di 512×512: la maschera sullo schermo è ~300-800px, quindi 512
 // era solo memoria sprecata (110 canvas a 512 = ~115 MB).
+//
+// Il glifo viene CENTRATO SUL CANVAS misurando il suo bounding box reale
+// (`actualBoundingBoxAscent/Descent`): prima si disegnava a coordinate fisse
+// (128, 215) e il glifo finiva spostato in basso, quindi la maschera non
+// combaciava col viso. Ora canvas e glifo hanno lo stesso centro.
 FaceTracker.prototype._makeEmoji = function (emoji) {
   const S = 256
   const cv = document.createElement('canvas')
@@ -381,8 +386,30 @@ FaceTracker.prototype._makeEmoji = function (emoji) {
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
   const fonts = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", "EmojiOne Color", sans-serif'
-  ctx.font = Math.round(S * 0.82) + 'px ' + fonts
-  ctx.fillText(emoji, S / 2, Math.round(S * 0.84))
+  ctx.font = Math.round(S * 0.80) + 'px ' + fonts
+  let cy = S * 0.62
+  try {
+    const m = ctx.measureText(emoji)
+    const asc = m.actualBoundingBoxAscent
+    const desc = m.actualBoundingBoxDescent
+    if (asc > 0 && desc >= 0) {
+      // centro verticale del glifo esattamente a S/2
+      cy = S / 2 + (asc - desc) / 2
+      // e riscala perché il glifo riempia ~86% del canvas
+      const gh = asc + desc
+      const target = S * 0.86
+      if (gh > 0) {
+        const k = target / gh
+        if (k > 0.2 && k < 5) {
+          ctx.font = Math.round(S * 0.80 * k) + 'px ' + fonts
+          const m2 = ctx.measureText(emoji)
+          const a2 = m2.actualBoundingBoxAscent, d2 = m2.actualBoundingBoxDescent
+          if (a2 > 0) { cy = S / 2 + (a2 - d2) / 2 }
+        }
+      }
+    }
+  } catch (e) {}
+  ctx.fillText(emoji, S / 2, cy)
   return cv
 }
 
@@ -411,11 +438,21 @@ FaceTracker.prototype.drawMask = function (ctx, W, H) {
     mw = m.faceW * W * 0.6
     rot = m.roll
   } else {
-    // face: centrato sul viso, ~20px SOTTO il centro (il font emoji ha il
-    // glyph spostato in basso, quindi compensiamo leggermente)
+    // face: centrato ESATTAMENTE sul centro del viso (faceCx/faceCy, che è il
+    // punto medio fra fronte/mento e guance). Il canvas dell'emoji ha il glifo
+    // già centrato (vedi _makeEmoji), quindi non serve più compensare.
+    //
+    // DIMENSIONE: prima `faceW * W * 1.35 * 1.5`, ora si prende il MAGGIORE fra
+    // una misura basata sulla larghezza del viso e una sull'altezza: quando il
+    // viso è vicino alla camera (faceH grande) la maschera cresce di conseguenza
+    // invece di restare piccola. Risultato: ~+25% e aderenza migliore.
     cx = m.faceCx * W
-    cy = m.faceCy * H + 20
-    mw = m.faceW * W * 1.35 * 1.5 // +50% size
+    const faceSize = Math.max(m.faceW * W * 2.5, m.faceH * H * 1.75)
+    mw = faceSize
+    // Il centro geometrico delle guance sta un filo più in alto del centro
+    // percepito del viso: compensiamo con una frazione della dimensione (non
+    // più 20px fissi, che su schermi grandi non scalavano).
+    cy = m.faceCy * H + faceSize * 0.03
     rot = m.roll
   }
 

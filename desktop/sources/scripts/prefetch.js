@@ -93,10 +93,42 @@ Prefetch.add('polyhaven-index', async () => {
   console.log('[Prefetch] indice Poly Haven:', n, 'modelli')
 })
 
-// --- 3) MediaPipe (solo se la webcam e' gia' stata usata) -------------------
+// --- 3) MediaPipe: bundle + wasm + modello face landmarker -------------------
+// È la voce che pesa di più sul primo Alt+Z: il wasm di tasks-vision è la parte
+// grossa (~10 MB) e veniva scaricato in linea mentre l'utente aspettava.
+// Misurato: init completo 10.5 s a freddo. Ora si scarica SEMPRE in background
+// (richieste "quiet", in idle) così al primo Alt+Z è già nella cache HTTP.
+Prefetch.MEDIAPIPE_FILES = [
+  '/vision_bundle.mjs',
+  '/wasm/vision_wasm_internal.js',
+  '/wasm/vision_wasm_internal.wasm',      // 9.4 MB: è QUESTA la voce da 10.5 s
+  '/wasm/vision_wasm_nosimd_internal.js',
+  '/wasm/vision_wasm_nosimd_internal.wasm' // solo se manca il SIMD: per ultima
+]
+
 Prefetch.add('mediapipe', async () => {
-  await import(Prefetch.MEDIAPIPE_CDN + '/vision_bundle.mjs')
-  await Net.fetch(Prefetch.MEDIAPIPE_MODEL, { quiet: true }, 25000)
-}, () => Prefetch.webcamUsed() && !(window.orkavClient && window.orkavClient.faceTracker && window.orkavClient.faceTracker.ready))
+  const cdn = Prefetch.MEDIAPIPE_CDN
+  await import(cdn + '/vision_bundle.mjs')
+  // Prima la variante SIMD (quella usata su qualunque Mac recente) e il modello,
+  // poi — molto dopo — la variante senza SIMD, che serve solo ai casi rari.
+  for (const f of ['/wasm/vision_wasm_internal.js', '/wasm/vision_wasm_internal.wasm']) {
+    try { await Net.fetch(cdn + f, { quiet: true }, 40000) } catch (e) {}
+  }
+  try { await Net.fetch(Prefetch.MEDIAPIPE_MODEL, { quiet: true }, 40000) } catch (e) {}
+  for (const f of ['/wasm/vision_wasm_nosimd_internal.js', '/wasm/vision_wasm_nosimd_internal.wasm']) {
+    try { await Net.fetch(cdn + f, { quiet: true }, 40000) } catch (e) {}
+  }
+}, () => {
+  // Salta solo se il face tracker è già pronto in questa sessione
+  return !(window.orkavClient && window.orkavClient.faceTracker && window.orkavClient.faceTracker.ready)
+})
+
+// --- 4) MaskFX: compila lo shader della maschera prima che serva ------------
+// Il primo Alt+H costava ~440 ms fra lettura del .frag e compilazione.
+Prefetch.add('maskfx', async () => {
+  const ft = window.orkavClient && window.orkavClient.faceTracker
+  if (!ft || !ft.maskFX || ft.maskFX.ready) { return }
+  await ft.maskFX.init()
+})
 
 window.Prefetch = Prefetch

@@ -118,6 +118,15 @@ function Client () {
   }
   this.resetSlots = () => { this._slotNext = Math.floor(Math.random() * this.slotList.length) }
 
+  // --- FINESTRA MODALE ------------------------------------------------------
+  // Contatore delle finestre modali aperte (dialogo file nativo). Mentre è > 0
+  // update() salta feed e shader: il processo di rendering resta libero e il
+  // pannello di sistema compare subito (era la causa del Cmd+O lento).
+  this._modal = 0
+  this.beginModal = () => { this._modal++ }
+  this.endModal = () => { this._modal = Math.max(0, this._modal - 1); this._progDirty = true; this.update() }
+  this.isModal = () => this._modal > 0
+
   // Tag effettivo di un canale: l'override se c'è, altrimenti il globale.
   this.tagFor = (kind) => {
     const t = this.tagBy ? this.tagBy[kind] : null
@@ -256,7 +265,7 @@ function Client () {
     this.acels.set('View','Chromawarp','Alt+N',()=>{this.activateFx('chromawarp')})
     this.acels.set('View','Glow','Alt+L',()=>{this.activateFx('glow')})
     this.acels.set('View','Fracture','Alt+Q',()=>{this.activateFx('fracture')})
-    this.acels.set('View','Freeze Loop','Alt+F',()=>{this.activateFx('freezeloop')})
+    this.acels.set('View','Motion Mosh (datamosh)','Alt+F',()=>{this.activateFx('motionmosh')})
     this.acels.set('View','Bubble Glow','Alt+E',()=>{this.activateFx('bubble')})
     this.acels.set('View','Webcam','Alt+Z',()=>{this.toggleWebcam()})
     // === TOTAL GLITCH / PANIC ===
@@ -318,7 +327,7 @@ function Client () {
         if(c==='KeyN'){this.activateFx('chromawarp');e.preventDefault();e.stopPropagation();return}
         if(c==='KeyL'){this.activateFx('glow');e.preventDefault();e.stopPropagation();return}
         if(c==='KeyQ'){this.activateFx('fracture');e.preventDefault();e.stopPropagation();return}
-        if(c==='KeyF'){this.activateFx('freezeloop');e.preventDefault();e.stopPropagation();return}
+        if(c==='KeyF'){this.activateFx('motionmosh');e.preventDefault();e.stopPropagation();return}
         if(c==='KeyE'){this.activateFx('bubble');e.preventDefault();e.stopPropagation();return}
         if(c==='KeyZ'){this.toggleWebcam();e.preventDefault();e.stopPropagation();return}
         if(c==='KeyX' && e.shiftKey){this.toggleTotalGlitch();e.preventDefault();e.stopPropagation();return}
@@ -478,6 +487,13 @@ function Client () {
     console.log('[Client] start() inizio')
     console.log('[DIAGNOSIS] start: before theme.start()')
     this.theme.start(); this.io.start()
+    // Chiave Giphy e cartella locale: localStorage su file:// non persiste,
+    // quindi si ripristinano dalla cache su disco (senza, le GIF non partono).
+    if (this.background && this.background.loadPersisted) {
+      this.background.loadPersisted().then(() => {
+        if (this.background.giphyKey) { console.log('[Client] sorgenti GIF complete') }
+      }).catch(() => {})
+    }
     console.log('[DIAGNOSIS] start: after theme.start(), before history.bind')
     this.history.bind(this.orca,'s'); this.history.record(this.orca.s)
     console.log('[DIAGNOSIS] start: after history, before clock.start')
@@ -670,10 +686,18 @@ function Client () {
         }
       }
     }
-    this.clear()
+    // Con la finestra modale aperta NON si pulisce: resta a schermo l'ultimo
+    // frame invece di un fondo nero dietro al pannello di sistema.
+    if (!(this._modal > 0)) { this.clear() }
+
+    // === FINESTRA MODALE (dialogo file nativo) ===
+    // Mentre il pannello di sistema è aperto il processo di rendering deve
+    // restare LIBERO: era questa la causa del Cmd+O che rispondeva dopo secondi.
+    // Saltiamo feed + shader e lasciamo a schermo l'ultimo frame.
+    const modal = this._modal > 0
 
     // === PIANO 0: TERMINALE ORCA nel buffer dedicato (ridisegno solo se dirty) ===
-    if (this._progDirty || this.orca.f !== this._lastProgF) {
+    if (!modal && (this._progDirty || this.orca.f !== this._lastProgF)) {
       this.progCtx.clearRect(0, 0, this.progEl.width, this.progEl.height)
       const savedCtx0 = this.context; this.context = this.progCtx
       this.ports = this.findPorts()
@@ -684,6 +708,7 @@ function Client () {
     }
 
     // === PIANO 1: FEED (background, swarm, bigTexts) ===
+    if (!modal) {
     this.sceneCtx.clearRect(0, 0, this.sceneEl.width, this.sceneEl.height)
     const savedCtx = this.context; this.context = this.sceneCtx
     // Video feed (webcam/layers) come BASE
@@ -740,10 +765,11 @@ function Client () {
       this.fxManager.quality = 1
     }
     if (feedOut) { this._safeDrawImage(this.context, this.sceneEl, 0, 0) }
+    } // fine !modal (PIANO 1 + PIANO 2)
 
     // === PIANO 3: TERMINALE ORCA sopra il feed — MAI influenzato dagli shader ===
     // (saltato solo in Total Glitch, dove è già dentro il feed distrutto)
-    if (!this.totalGlitch) {
+    if (!this.totalGlitch && !modal) {
       this._safeDrawImage(this.context, this.progEl, 0, 0)
     }
 
@@ -1596,7 +1622,7 @@ function Client () {
       ['ALT+N','chromawarp.400.400'],
       ['ALT+Q','fracture.400.400'],
       ['ALT+L','glow.400.400'],
-      ['ALT+F','freezeloop.400.400'],
+      ['ALT+F','motionmosh.400.400'],
       ['ALT+E','bubble.400.400'],
       ['ALT+Z','webcam'],
       ['ALT+H','maschera viso emoji'],
