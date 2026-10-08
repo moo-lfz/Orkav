@@ -180,17 +180,48 @@ function Client () {
   this.endModal = () => { this._modal = Math.max(0, this._modal - 1); this._progDirty = true; this.update() }
   this.isModal = () => this._modal > 0
 
-  // Tag effettivo di un canale: l'override se c'è, altrimenti il globale.
+  // Cursore di rotazione dei tag per canale: OGNI VOLTA che si carica un nuovo
+  // elemento (stormo GIF o modello 3D) il tag di quel canale AVANZA, così due
+  // stormi o due modelli non pescano mai dalla stessa ricerca.
+  // Un canale è "pinnato" quando ha un override (tagbg:/taggif:/tag3d:/tagfont:):
+  // in quel caso NON ruota. Togliere l'override (comando vuoto) riattiva la ruota.
+  this._tagRot = { bg: 0, gif: 0, model: 0, font: 0 }
+  this._tagCur = { bg: null, gif: null, model: null, font: null }
+
+  // Tag effettivo di un canale: l'override (pinnato) → il cursore di rotazione
+  // → il tag globale.
   this.tagFor = (kind) => {
-    const t = this.tagBy ? this.tagBy[kind] : null
-    return t || this.currentTag
+    const pinned = this.tagBy ? this.tagBy[kind] : null
+    if (pinned) { return pinned }
+    const cur = this._tagCur ? this._tagCur[kind] : null
+    return cur || this.currentTag
   }
-  // kind: 'bg' | 'gif' | 'model' | 'font'. tag vuoto/null = torna al globale.
+  // kind: 'bg' | 'gif' | 'model' | 'font'. tag vuoto/null = togli il pin e
+  // riattiva la rotazione per quel canale.
   this.setTagFor = (kind, tag) => {
     if (!this.tagBy || !(kind in this.tagBy)) { return false }
     const v = (tag == null) ? null : String(tag).trim().toLowerCase()
     this.tagBy[kind] = v || null
+    if (!v) { this._tagCur[kind] = null }
     return true
+  }
+  // Avanza il tag di un canale e lo restituisce. Usato da loadSwarm() e da
+  // model3d.loadRandom() quando non ricevono un tag esplicito.
+  this.nextTagFor = (kind) => {
+    if (!this.tags || !this.tags.length) { return this.currentTag }
+    if (this.tagBy && this.tagBy[kind]) { return this.tagBy[kind] }   // pinnato: resta
+    let i = (this._tagRot[kind] || 0) + 1
+    // salta il tag attualmente uguale al globale, per non ripeterlo subito
+    let guard = 0
+    while (guard++ < this.tags.length && this.tags[i % this.tags.length] === this.currentTag) { i++ }
+    this._tagRot[kind] = i % this.tags.length
+    this._tagCur[kind] = this.tags[this._tagRot[kind]]
+    return this._tagCur[kind]
+  }
+  // Il tag globale cambia: i canali non pinnati ripartono da lì.
+  this.resetTagRotation = () => {
+    this._tagCur = { bg: null, gif: null, model: null, font: null }
+    this._tagRot = { bg: 0, gif: 0, model: 0, font: 0 }
   }
   // Riepilogo leggibile dei quattro canali (per il commander e il terminale).
   this.tagSummary = () => {
@@ -323,7 +354,10 @@ function Client () {
     this.acels.set('View','Webcam','Alt+Z',()=>{this.toggleWebcam()})
     // === TOTAL GLITCH / PANIC ===
     this.acels.set('View','Total Glitch','Alt+Shift+X',()=>{this.toggleTotalGlitch()})
-    this.acels.set('View','Load GIF Swarm','Alt+G',()=>{this.background.loadSwarm();this.update()})
+    // Alt+G AGGIUNGE uno stormo (fino a maxSwarms: oltre, il più vecchio esce)
+    this.acels.set('View','Add GIF Swarm','Alt+G',()=>{this.background.loadSwarm();this.update()})
+    // Alt+Shift+G azzera tutti gli stormi
+    this.acels.set('View','Clear GIF Swarms','Alt+Shift+G',()=>{this.background.clearSwarms();this.update()})
     this.acels.set('View','Load Background Once','Alt+B',()=>{this.background.loadBackground();this.update()})
     this.acels.set('View','Background Auto Cycle','Alt+Shift+B',()=>{this.background.startAuto();this.update()})
     this.acels.set('View','Big Text Overlay','Alt+W',()=>{this.commander.isActive=false;this.fxTextMode=false;this.bigTextMode=true;this.bigTextBuffer='';this.cursor.ins=false;this.update()})
@@ -339,6 +373,8 @@ function Client () {
     this.acels.set('View','Next Tag','CmdOrCtrl+Shift+T', () => {
       const idx = (this.tags.indexOf(this.currentTag) + 1) % this.tags.length
       this.currentTag = this.tags[idx]
+      // il tag globale cambia: i canali non pinnati ripartono da qui
+      this.resetTagRotation()
       this.background.loadBackgroundByTag(this.tagFor('bg'))
       this.background.loadSwarmByTag(this.tagFor('gif'))
       // Anche il modello 3D segue il tag (se ha un override suo, resta il suo).
@@ -348,7 +384,7 @@ function Client () {
     // Cambia SOLO il tag del modello 3D, senza toccare bg/gif/font.
     this.acels.set('View','Next Tag (3D)','Alt+Shift+T', () => {
       const idx = (this.tags.indexOf(this.tagFor('model')) + 1) % this.tags.length
-      this.setTagFor('model', this.tags[idx])
+      this.setTagFor('model', this.tags[idx])   // pinna: da qui in poi non ruota più
       if (this.model3d && this.model3d.active) { this.model3d.loadRandom() }
       console.log('[Orca] Tag 3D:', this.tagFor('model'))
       this.update()
@@ -384,7 +420,10 @@ function Client () {
         if(c==='KeyE'){this.activateFx('bubble');e.preventDefault();e.stopPropagation();return}
         if(c==='KeyZ'){this.toggleWebcam();e.preventDefault();e.stopPropagation();return}
         if(c==='KeyX' && e.shiftKey){this.toggleTotalGlitch();e.preventDefault();e.stopPropagation();return}
-        if(c==='KeyG'){this.background.loadSwarm();this.update();e.preventDefault();e.stopPropagation();return}
+        if(c==='KeyG'){
+          if(e.shiftKey){this.background.clearSwarms()}else{this.background.loadSwarm()}
+          this.update();e.preventDefault();e.stopPropagation();return
+        }
         if(c==='KeyB'){if(e.shiftKey){this.background.startAuto()}else{this.background.loadBackground()}this.update();e.preventDefault();e.stopPropagation();return}
         if(c==='KeyW'){this.commander.isActive=false;this.fxTextMode=false;this.bigTextMode=true;this.bigTextBuffer='';this.cursor.ins=false;this.update();e.preventDefault();e.stopPropagation();return}
         if(c==='KeyH'){if(this.faceTracker){this.faceTracker.toggleMask()}e.preventDefault();e.stopPropagation();return}
@@ -647,6 +686,7 @@ function Client () {
         if(this.background.tagKeys.indexOf(tag) < 0){ this.background.tagKeys.push(tag) }
         if(!this.background.commonsTags[tag]){ this.background.commonsTags[tag] = [tag] }
         this.currentTag = tag
+        this.resetTagRotation()
         this.background.loadBackgroundByTag(tag)
         this.background.loadSwarmByTag(tag)
         console.log('[Orca] Tag aggiunto e cercato:', tag)

@@ -66,7 +66,8 @@ function Model3d (client) {
   // --- MULTI-OGGETTO: più modelli contemporaneamente -----------------------
   // Ogni voce: { obj, mixer, uniform, baseScale, basePos, phase, spinX, spinZ, tag }
   this.models = []
-  this.maxModels = 6
+  // Fino a 10 modelli in scena (era 6). Regolabile con models:<n>.
+  this.maxModels = 10
   // --- GLOSSY: materiale lucido con riflessi d'ambiente -------------------
   this.glossy = false
   this._envTexture = null
@@ -199,7 +200,14 @@ Model3d.prototype.addModel = async function (tag) {
 Model3d.prototype.loadRandom = async function (tag, opts) {
   const add = !!(opts && opts.add)
   if (!add) this.clearModels()
-  const term = tag || (this.client && this.client.tagFor ? this.client.tagFor('model') : null) || (this.client && this.client.currentTag) || 'low poly'
+  // TAG: se non è passato esplicitamente AVANZA il cursore del canale 'model',
+  // così ogni Alt+P / Alt+M carica un modello da un tag diverso. Se il canale
+  // è pinnato con tag3d:<x>, nextTagFor restituisce quello e non ruota.
+  let term = tag
+  if (!term && this.client && this.client.nextTagFor) { term = this.client.nextTagFor('model') }
+  if (!term && this.client && this.client.tagFor) { term = this.client.tagFor('model') }
+  if (!term) { term = 'low poly' }
+  this._lastTerm = term
   this.status('3D ' + (add ? '+ ' : '') + term)
   if (this.tvToken) {
     const okTv = await this.loadFromThingiverse(term)
@@ -866,6 +874,7 @@ Model3d.prototype._attach = function (object3d, animations) {
 
   const entry = {
     obj: object3d,
+    tag: this._lastTerm || null,
     mixer: null,
     uniform: uniform,
     baseScale: scale,

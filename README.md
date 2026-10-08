@@ -291,6 +291,17 @@ Il glifo dell'emoji viene **centrato sul canvas misurando il suo bounding box re
 
 La dimensione è `max(faceW × W × 2.5, faceH × H × 1.75)`: si adatta sia alla larghezza sia all'**altezza** del viso, quindi quando ti avvicini alla camera la maschera cresce invece di restare piccola (~+25% rispetto a prima). L'offset verticale è una frazione della dimensione (`+3%`) e non più 20px fissi, che su schermi grandi non scalavano.
 
+## Stormi GIF multipli e modelli 3D multipli
+
+`Alt+G` **aggiunge** uno stormo (non sostituisce): fino a `maxSwarms` (default **4**), oltre i quali esce il più vecchio. Ogni stormo ha la **sua** GIF, il suo `<img>` nascosto, i suoi boid e la **sua zona dello schermo** dall'allocatore di slot, e con più stormi in scena le GIF rimpiccioliscono da sole (`crowd`) così non si accavallano.
+
+| Tasto | Azione |
+|-------|--------|
+| `Alt+G` | **aggiunge** uno stormo, con il tag successivo |
+| `Alt+Shift+G` | azzera tutti gli stormi |
+
+I modelli 3D arrivano fino a **10** in scena (era 6): `Alt+P` accende, `Alt+M` aggiunge. Ognuno prende uno slot diverso e il proprio tag.
+
 ## GIF: perché non si caricavano
 
 Tre cause, tutte risolte.
@@ -457,6 +468,18 @@ Ripetere `Alt+P` (o `ph:`) con lo stesso tag dà **modelli diversi**: il seletto
 
 I tag sono **indipendenti per canale**: le GIF possono pescare da un tag diverso dalle immagini di background, dai modelli 3D e dai font dei big text. `null` = segue il tag globale.
 
+**Il tag ruota da solo.** Ogni volta che si carica un elemento **nuovo** — uno stormo GIF o un modello 3D — il tag di quel canale **avanza** nella lista. Quindi due stormi o tre modelli in scena pescano sempre da ricerche diverse, senza doverlo chiedere.
+
+```
+Alt+P → modello da "gatti"
+Alt+M → modello da "simpson"       (tag avanzato)
+Alt+M → modello da "rick and morty"
+Alt+G → stormo da "the office"
+Alt+G → stormo da "friends"        (tag avanzato)
+```
+
+Un canale **smette di ruotare** quando lo si **pinna** con un override (`tag3d:matrix`, `taggif:lucifer`, …): da quel momento resta su quello. Per riattivare la rotazione si toglie l'override (`tag3d:` vuoto) o si usa `tagrotate:<canale>`. `Cmd+Shift+T` (tag globale) fa ripartire la rotazione di tutti i canali non pinnati.
+
 | Comando | Effetto |
 |---------|---------|
 | `tag:<nome>` | tag **globale** (ricarica bg, GIF e 3D che non hanno un override) |
@@ -466,6 +489,12 @@ I tag sono **indipendenti per canale**: le GIF possono pescare da un tag diverso
 | `tagfont:<nome>` | solo i **font dei big text** (tag diversi partono da font diversi, poi ruotano) |
 | `tagbg:` (vuoto) | rimuove l'override: il canale torna a seguire il globale |
 | `tags` | stampa la situazione dei quattro canali |
+| `tagrotate` | toglie tutti i pin e riattiva la rotazione |
+| `tagrotate:<canale>` | solo quel canale (`bg`/`gif`/`model`/`font`) |
+| `swarms` | stato degli stormi GIF e dei modelli 3D in scena |
+| `swarmclear` | azzera tutti gli stormi |
+| `swarmmax:<n>` | quanti stormi tenere (1–8, default 4) |
+| `models:<n>` | quanti modelli 3D tenere (1–16, default 10) |
 
 `Cmd+Shift+T` cicla il tag **globale** e ricarica background, GIF e (se attivo) modello 3D. `Alt+Shift+T` cicla **solo** il tag dei modelli 3D.
 
@@ -530,7 +559,7 @@ In più `_tuneMaterials()` normalizza i materiali appena caricati: `envMapIntens
 | `Alt+H` | maschera emoji sul viso |
 | `Alt+P` | modello 3D (Poly Haven / Thingiverse) |
 | `Alt+Shift+X` | Total Glitch + PANICO multilingua |
-| `Alt+G` | stormo GIF (boids) |
+| `Alt+G` / `Alt+Shift+G` | aggiungi stormo GIF (boids) / azzera tutti gli stormi |
 | `Alt+B` | background random |
 | `Alt+Shift+B` | background auto-cycle |
 | `Alt+W` | big text overlay |

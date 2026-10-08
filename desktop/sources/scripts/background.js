@@ -1,10 +1,12 @@
 'use strict'
 function Background (client) {
   this.client = client
-  this.mode = 'none'; this.video = null; this.layers = []; this.swarm = null
+  this.mode = 'none'; this.video = null; this.layers = []
+  // STORMI GIF: array (multipli). `swarm` resta l'ultimo pronto per compatibilita'.
+  this.swarms = []; this.swarm = null; this.maxSwarms = 4
   this.webcam = null; this.webcamStream = null
   this.autoTimer = null; this.autoUntil = 0; this.lastT = 0; this.localUsed = 0
-  this.gifSourceIndex = 0; this.gifHost = null; this.swarmAuto = null
+  this.swarmAuto = null
   // Cartella locale di background/GIF (OPZIONALE). Di default nessuna: si usa
   // la rete (Giphy/Commons) o i frame procedurali. Impostala con bgdir:<path>.
   this.localDir = null
@@ -132,24 +134,7 @@ Background.prototype.pickTag = function (kind) {
   return entry[Math.floor(Math.random() * entry.length)] || key
 }
 
-// --- METODI PER TAG ---
-Background.prototype.loadBackgroundByTag = function(tag) {
-  tag = tag || this.tagKeyFor('bg')
-  const entry = this.commonsTags[tag]
-  if (!entry) { this.loadBackground(); return }
-  const searchTerm = Array.isArray(entry) ? entry[Math.floor(Math.random() * entry.length)] : entry
-  this.fetchCommons(searchTerm, 'img')
-}
-
-Background.prototype.loadSwarmByTag = function(tag) {
-  tag = tag || this.tagKeyFor('gif')
-  const entry = this.commonsTags[tag]
-  if (!entry) { this.loadSwarm(); return }
-  const searchTerm = Array.isArray(entry) ? entry[Math.floor(Math.random() * entry.length)] : entry
-  this.gifSourceIndex = 0
-  this.fetchGiphy(searchTerm)
-}
-
+// --- HTTP (tutto passa da Net: timeout, annullamento per canale) ---
 Background.prototype.httpGet = function (url, cb, eb, redirects) {
   redirects = redirects || 0
   // Renderer sandbox: niente Buffer/require. Uso fetch + Uint8Array/TextDecoder.
@@ -169,94 +154,156 @@ Background.prototype.httpGet = function (url, cb, eb, redirects) {
 Background.prototype.fetchText = function (url, cb, eb) {
   this.httpGet(url, (u8) => { try { cb(new TextDecoder('utf-8').decode(u8)) } catch (e) { eb() } }, eb)
 }
-Background.prototype.fetchJSON = function (url, cb, eb) { this.fetchText(url, (t) => { try { cb(JSON.parse(t)) } catch (e) { eb() } }, eb) }
 
-Background.prototype.loadSwarm = async function () {
-  if (!this.swarmAuto) { this.swarmAuto = setInterval(() => { this.loadSwarm() }, 8000) }
-  let src = null
+Background.prototype.fetchJSON = function (url, cb, eb) {
+  this.fetchText(url, (t) => { try { cb(JSON.parse(t)) } catch (e) { eb() } }, eb)
+}
+
+// ============================================================================
+// STORMI GIF — MULTIPLI
+// Prima `this.swarm` era UNO solo: ogni nuovo Alt+G sostituiva il precedente.
+// Ora `this.swarms` è un array (max maxSwarms): ogni stormo ha la sua GIF, il
+// suo <img> nascosto, i suoi boid e la sua zona dello schermo, quindi se ne
+// possono avere diversi contemporaneamente.
+// Ogni volta che se ne carica uno NUOVO il tag avanza (vedi client.nextTagFor):
+// stormi diversi pescano da tag diversi.
+// ============================================================================
+
+// Crea lo <img> nascosto di uno stormo (uno per stormo: non si può condividere)
+Background.prototype.makeGifHost = function () {
+  const img = document.createElement('img')
+  img.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:1;z-index:-1;pointer-events:none;'
+  img.setAttribute('aria-hidden', 'true')
+  document.body.appendChild(img)
+  return img
+}
+
+// --- METODI PER TAG ---
+Background.prototype.loadBackgroundByTag = function(tag) {
+  tag = tag || this.tagKeyFor('bg')
+  const entry = this.commonsTags[tag]
+  if (!entry) { this.loadBackground(); return }
+  const searchTerm = Array.isArray(entry) ? entry[Math.floor(Math.random() * entry.length)] : entry
+  this.fetchCommons(searchTerm, 'img')
+}
+
+// Carica un NUOVO stormo. Se non si passa un tag, il tag del canale 'gif' avanza
+// (a meno che sia pinnato con taggif:). opts.replace = sostituisci invece di
+// aggiungere. Oltre maxSwarms si elimina il più vecchio.
+Background.prototype.loadSwarm = async function (tag, opts) {
+  opts = opts || {}
+  if (!this.swarmAuto) {
+    this.swarmAuto = setInterval(() => { this.loadSwarm() }, this.swarmInterval || 8000)
+  }
+  const swarms = this.swarms || (this.swarms = [])
+  const max = this.maxSwarms || 4
+  if (opts.replace) { this.clearSwarms() }
+  while (swarms.length >= max) { this._dropSwarm(0) }
+
+  // TAG: se non è passato esplicitamente, avanza il cursore del canale
+  let t = tag
+  if (!t) {
+    t = (this.client && this.client.nextTagFor) ? this.client.nextTagFor('gif') : null
+  }
+  const target = { tag: t || null, host: this.makeGifHost(), boids: [], srcIndex: 0, token: 0, ready: false }
+  swarms.push(target)
+  console.log('[Background] stormo #' + swarms.length + ' tag:', target.tag || '(nessuno)')
+
+  // 1) GIF locali, se c'è una cartella configurata
   try {
     if (window.api && window.api.fs && this.localDir) {
-      // readdirSync è async (IPC invoke) → await
       const gifs = (await window.api.fs.readdirSync(this.localDir)).filter(f => /\.gif$/i.test(f))
-      if (gifs.length) { src = 'file://' + this.localDir + '/' + gifs[Math.floor(Math.random() * gifs.length)] }
+      if (gifs.length) {
+        this.setSwarmData('file://' + this.localDir + '/' + gifs[Math.floor(Math.random() * gifs.length)], target)
+        return
+      }
     }
   } catch (e) {}
-  if (src) { this.setSwarmData(src); return }
-  this.gifSourceIndex = 0
-  this.tryNextGifSource()
+  this.tryNextGifSource(target)
 }
 
-Background.prototype.tryNextGifSource = function () {
+// Come loadSwarm ma con un tag esplicito (Cmd+Shift+T, taggif:, MIDI).
+// Non pinna il canale: forza solo il tag di questo stormo.
+Background.prototype.loadSwarmByTag = function (tag) {
+  this.loadSwarm(tag)
+}
+
+Background.prototype.clearSwarms = function () {
+  const swarms = this.swarms || []
+  for (const s of swarms) {
+    try { if (s.timer) { clearTimeout(s.timer) } } catch (e) {}
+    try { if (s.host && s.host.parentNode) { s.host.parentNode.removeChild(s.host) } } catch (e) {}
+  }
+  this.swarms = []
+  this.swarm = null
+  console.log('[Background] stormi azzerati')
+}
+
+Background.prototype._dropSwarm = function (i) {
+  const swarms = this.swarms || []
+  const s = swarms[i]
+  if (!s) { return }
+  try { if (s.timer) { clearTimeout(s.timer) } } catch (e) {}
+  try { if (s.host && s.host.parentNode) { s.host.parentNode.removeChild(s.host) } } catch (e) {}
+  swarms.splice(i, 1)
+}
+
+Background.prototype.tryNextGifSource = function (target) {
+  if (!target) { return }
   const en = this.commonsTags[this.tagKeyFor('gif')]
-  const enTag = Array.isArray(en) ? en[0] : (en || 'art')
-  // Ordine delle sorgenti:
-  //   1) Giphy  — GIF piccole (~200px, fixed_height_small): la più veloce.
-  //      Richiede la chiave, che ora si persiste su disco (vedi setGiphyKey).
-  //   2) Commons per tag — GIF vere, tag-aware, ma pesanti: filtrate per dimensione.
-  //   3) Commons per categoria — sempre disponibile senza chiave, prende una GIF
-  //      animata a caso dalla categoria "Animated GIF files".
-  //   4) frame procedurali — ultima spiaggia, rete assente.
+  const enTag = target.tag || (Array.isArray(en) ? en[0] : (en || 'art'))
+  // Ordine: Giphy (leggera) → Commons per tag → Commons per categoria → procedurali
   const sources = ['giphy', 'commons', 'commonscat', 'procedural']
-  if (this.gifSourceIndex >= sources.length) {
+  if (target.srcIndex >= sources.length) {
     console.warn('Swarm', 'rete non disponibile: uso frame procedurali')
-    this.gifSourceIndex = 0
-    this.initSwarmFrames(this.makeProceduralFrames())
+    this.initSwarmFrames(this.makeProceduralFrames(), target)
     return
   }
-  const s = sources[this.gifSourceIndex++]
-  if (s === 'giphy') { this.fetchGiphy(enTag) }
-  else if (s === 'commons') { this.fetchCommonsGif(enTag) }
-  else if (s === 'commonscat') { this.fetchCommonsGifCategory() }
-  else { this.initSwarmFrames(this.makeProceduralFrames()) }
+  const s = sources[target.srcIndex++]
+  if (s === 'giphy') { this.fetchGiphy(enTag, target) }
+  else if (s === 'commons') { this.fetchCommonsGif(enTag, target) }
+  else if (s === 'commonscat') { this.fetchCommonsGifCategory(target) }
+  else { this.initSwarmFrames(this.makeProceduralFrames(), target) }
 }
 
-// Giphy: usa fixed_height_small (GIF ~200px, leggere) → decodifica nativa del browser,
-// NIENTE decodeGif sincrono che bloccava il main thread su GIF grandi.
-Background.prototype.fetchGiphy = function (q) {
-  // Chiave non configurata → salta subito alla sorgente successiva
-  if (!this.giphyKey) { this.tryNextGifSource(); return }
+// Giphy: usa fixed_height_small (GIF ~200px, leggere) → decodifica nativa del browser.
+Background.prototype.fetchGiphy = function (q, target) {
+  if (!this.giphyKey) { this.tryNextGifSource(target); return }
   const url = 'https://api.giphy.com/v1/gifs/search?api_key=' + this.giphyKey + '&q=' + encodeURIComponent(q) + '&limit=25&rating=r'
   this.fetchJSON(url, (json) => {
     const gifs = json.data
-    if (!gifs || !gifs.length) { this.tryNextGifSource(); return }
+    if (!gifs || !gifs.length) { this.tryNextGifSource(target); return }
     const g = gifs[Math.floor(Math.random() * gifs.length)]
-    // fixed_height_small = GIF piccola e leggera (no blocco CPU)
     const src = (g.images && (g.images.fixed_height_small || g.images.fixed_width_small || g.images.downsized_small) || {}).url
-    if (src) { this.setSwarmData(src) } else { this.tryNextGifSource() }
-  }, () => { this.tryNextGifSource() })
+    if (src) { this.setSwarmData(src, target) } else { this.tryNextGifSource(target) }
+  }, () => { this.tryNextGifSource(target) })
 }
 
 // Fonte GIF affidabile: Wikimedia Commons (API pubblica, no key, CORS aperto).
-// Cerca "animated gif <tag>" — restituisce GIF animate reali con URL diretto.
-// FILTRO DIMENSIONE: molte GIF della Commons sono da 5-20 MB e a 1796×1820: il
-// caricamento non finiva mai e lo stormo restava vuoto. Preferiamo le più
-// leggere (max 3 MB) e, a parità di candidati validi, scegliamo tra le piccole.
-Background.prototype.fetchCommonsGif = function (tag) {
+// FILTRO DIMENSIONE: molte GIF della Commons sono da 5-20 MB a 1796×1820.
+Background.prototype.fetchCommonsGif = function (tag, target) {
   const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=' + encodeURIComponent('animated gif ' + tag) + '&gsrnamespace=6&gsrlimit=40&prop=imageinfo&iiprop=url|mime|size'
   this.fetchJSON(url, (json) => {
     const pages = json.query && json.query.pages
-    if (!pages) { this.tryNextGifSource(); return }
-    this._pickCommonsGif(pages, 'search')
-  }, () => { this.tryNextGifSource() })
+    if (!pages) { this.tryNextGifSource(target); return }
+    this._pickCommonsGif(pages, 'search', target)
+  }, () => { this.tryNextGifSource(target) })
 }
 
 // Categoria "Animated GIF files": sempre disponibile senza chiave, nessun tag.
-// È il ripiego che garantisce GIF vere anche quando la ricerca per tag non trova
-// nulla di caricabile.
-Background.prototype.fetchCommonsGifCategory = function () {
+Background.prototype.fetchCommonsGifCategory = function (target) {
   const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=categorymembers&gcmtitle=Category:Animated_GIF_files&gcmtype=file&gcmlimit=40&prop=imageinfo&iiprop=url|mime|size'
   this.fetchJSON(url, (json) => {
     const pages = json.query && json.query.pages
-    if (!pages) { this.tryNextGifSource(); return }
-    this._pickCommonsGif(pages, 'category')
-  }, () => { this.tryNextGifSource() })
+    if (!pages) { this.tryNextGifSource(target); return }
+    this._pickCommonsGif(pages, 'category', target)
+  }, () => { this.tryNextGifSource(target) })
 }
 
 // Sceglie una GIF caricabile fra le pagine restituite dall'API.
 // Preferisce le LEGGERE e a risoluzione contenuta: lo stormo le disegna 17
-// volte per frame a 90px di altezza, quindi una GIF da 1800px non aggiunge
-// nulla e costa molto (download + decodifica + 17 drawImage).
-Background.prototype._pickCommonsGif = function (pages, why) {
+// volte per frame a 90px di altezza.
+Background.prototype._pickCommonsGif = function (pages, why, target) {
   const MAXB = 2 * 1024 * 1024
   const MAXW = 900
   const good = [], huge = []
@@ -269,77 +316,82 @@ Background.prototype._pickCommonsGif = function (pages, why) {
     if ((sz && sz > MAXB) || (w && w > MAXW * 2)) { huge.push({ url: ii.url, sz: sz, w: w }) }
     else { good.push({ url: ii.url, sz: sz, w: w }) }
   }
-  let pool = good.length ? good : huge
-  if (!pool.length) { this.tryNextGifSource(); return }
-  // Ordina per "peso percepito" (byte + risoluzione) e pesca fra i più leggeri:
-  // resta varietà, ma si evitano i casi da 20 MB che non finivano mai.
+  const pool = good.length ? good : huge
+  if (!pool.length) { this.tryNextGifSource(target); return }
   pool.sort((a, b) => (a.sz + a.w * 400) - (b.sz + b.w * 400))
   const top = pool.slice(0, Math.max(1, Math.ceil(pool.length * 0.6)))
   const pick = top[Math.floor(Math.random() * top.length)].url
   console.log('[Background] GIF da Commons (' + why + '):', good.length, 'leggere /', huge.length, 'pesanti')
-  this.useGifUrl(pick)
+  this.useGifUrl(pick, target)
 }
 
-// Usa direttamente l'URL nell'<img> nativo: il browser decodifica/Anima la GIF
-// in modo ottimizzato (niente decodeGif sincrono che bloccava il main thread).
-Background.prototype.useGifUrl = function (url) {
-  this.setSwarmData(url)
+// L'<img> nativo decodifica e anima la GIF in modo ottimizzato.
+Background.prototype.useGifUrl = function (url, target) {
+  this.setSwarmData(url, target)
 }
 
-Background.prototype.ensureGifHost = function () {
-  if (!this.gifHost) {
-    this.gifHost = document.createElement('img')
-    this.gifHost.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:1;z-index:-1;pointer-events:none;'
-    this.gifHost.setAttribute('aria-hidden', 'true')
-    document.body.appendChild(this.gifHost)
-  }
-  return this.gifHost
-}
-
-Background.prototype.setSwarmData = function (src) {
-  const img = this.ensureGifHost()
+Background.prototype.setSwarmData = function (src, target) {
+  if (!target) { return }
+  const img = target.host
+  if (!img) { this.tryNextGifSource(target); return }
   // Le GIF della Commons possono pesare diversi MB: senza timeout si resta
-  // fermi su un caricamento che non finisce mai ("le GIF non si caricano").
-  // Se in 8 s non è pronta, si passa alla sorgente successiva.
-  if (this._gifTimer) { clearTimeout(this._gifTimer) }
-  const token = (this._gifToken = (this._gifToken || 0) + 1)
-  this._gifTimer = setTimeout(() => {
-    if (token !== this._gifToken) { return }
+  // fermi su un caricamento che non finisce mai. Se in 8 s non è pronta, si
+  // passa alla sorgente successiva di QUESTO stormo.
+  if (target.timer) { clearTimeout(target.timer) }
+  const token = (target.token = (target.token || 0) + 1)
+  target.timer = setTimeout(() => {
+    if (token !== target.token) { return }
     console.warn('[Background] GIF troppo lenta (>8s), provo un\'altra sorgente')
-    this.tryNextGifSource()
+    this.tryNextGifSource(target)
   }, 8000)
   img.onload = () => {
-    if (token !== this._gifToken) { return }
-    if (this._gifTimer) { clearTimeout(this._gifTimer); this._gifTimer = null }
-    if (img.naturalWidth) { this.initSwarm() }
+    if (token !== target.token) { return }
+    if (target.timer) { clearTimeout(target.timer); target.timer = null }
+    if (img.naturalWidth) { this.initSwarm(target) }
   }
   img.onerror = () => {
-    if (token !== this._gifToken) { return }
-    if (this._gifTimer) { clearTimeout(this._gifTimer); this._gifTimer = null }
-    this.tryNextGifSource()
+    if (token !== target.token) { return }
+    if (target.timer) { clearTimeout(target.timer); target.timer = null }
+    this.tryNextGifSource(target)
   }
   img.src = src
 }
 
-Background.prototype.initSwarm = function () {
-  const img = this.gifHost
+// Costruisce i boid di uno stormo nella sua zona dello schermo.
+Background.prototype._makeBoids = function (count) {
   const W = this.client.el.width; const H = this.client.el.height
   const boids = []
-  // Zona assegnata dall'allocatore di slot: lo stormo non nasce al centro
   const slot = (this.client && this.client.nextSlot) ? this.client.nextSlot() : { x: 0.35 + Math.random() * 0.3, y: 0.35 + Math.random() * 0.3 }
   const cx = W * slot.x; const cy = H * slot.y
-  for (let i = 0; i < 17; i++) { boids.push({ x: cx + (Math.random() - 0.5) * 350, y: cy + (Math.random() - 0.5) * 250, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 }) }
-  this.swarm = { img: img, boids: boids, start: performance.now(), nextTeleport: Date.now() + 6000 + Math.random() * 8000 }
+  for (let i = 0; i < count; i++) {
+    boids.push({ x: cx + (Math.random() - 0.5) * 350, y: cy + (Math.random() - 0.5) * 250, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 })
+  }
+  return boids
 }
 
-Background.prototype.initSwarmFrames = function (g) {
-  const W = this.client.el.width; const H = this.client.el.height
-  const boids = []
-  // Zona assegnata dall'allocatore di slot: lo stormo non nasce al centro
-  const slot = (this.client && this.client.nextSlot) ? this.client.nextSlot() : { x: 0.35 + Math.random() * 0.3, y: 0.35 + Math.random() * 0.3 }
-  const cx = W * slot.x; const cy = H * slot.y
-  for (let i = 0; i < 17; i++) { boids.push({ x: cx + (Math.random() - 0.5) * 350, y: cy + (Math.random() - 0.5) * 250, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 }) }
-  this.swarm = { frames: g.frames, width: g.width, height: g.height, boids: boids, start: performance.now(), nextTeleport: Date.now() + 6000 + Math.random() * 8000 }
+Background.prototype.initSwarm = function (target) {
+  target = target || (this.swarms && this.swarms[this.swarms.length - 1])
+  if (!target || target.ready) { return }
+  target.img = target.host
+  target.boids = this._makeBoids(17)
+  target.start = performance.now()
+  target.nextTeleport = Date.now() + 6000 + Math.random() * 8000
+  target.ready = true
+  // compatibilità: `swarm` resta l'ultimo pronto
+  this.swarm = target
+}
+
+Background.prototype.initSwarmFrames = function (g, target) {
+  target = target || (this.swarms && this.swarms[this.swarms.length - 1])
+  if (!target) { return }
+  target.frames = g.frames
+  target.width = g.width
+  target.height = g.height
+  target.boids = this._makeBoids(17)
+  target.start = performance.now()
+  target.nextTeleport = Date.now() + 6000 + Math.random() * 8000
+  target.ready = true
+  this.swarm = target
 }
 
 Background.prototype.makeProceduralFrames = function () {
@@ -360,8 +412,9 @@ Background.prototype.makeProceduralFrames = function () {
   return { width: W, height: H, frames: frames }
 }
 
-Background.prototype.stepSwarm = function (W, H, bass) {
-  const s = this.swarm; const now = Date.now()
+Background.prototype.stepSwarm = function (s, W, H, bass) {
+  if (!s || !s.boids || !s.boids.length) { return }
+  const now = Date.now()
   if (now > s.nextTeleport) {
     const dx = (Math.random() - 0.5) * W * 0.8; const dy = (Math.random() - 0.5) * H * 0.6
     for (let i = 0; i < s.boids.length; i++) { s.boids[i].x += dx; s.boids[i].y += dy }
@@ -389,23 +442,37 @@ Background.prototype.stepSwarm = function (W, H, bass) {
   }
 }
 
+// Disegna TUTTI gli stormi pronti.
 Background.prototype.drawSwarm = function (ctx, W, H) {
-  if (!this.swarm) { return }
-  const s = this.swarm
+  const swarms = this.swarms || []
+  if (!swarms.length) { return }
   const bass = this.client.audioReactor ? (this.client.audioReactor.bass || 0) : 0
-  this.stepSwarm(W, H, bass)
-  let img = null, nw = 0, nh = 0
-  if (s.frames) {
-    let total = 0; for (const f of s.frames) { total += f.delay }
-    const t = (performance.now() - s.start) % total
-    let acc = 0, idx = 0
-    for (let i = 0; i < s.frames.length; i++) { acc += s.frames[i].delay; if (t < acc) { idx = i; break } }
-    img = s.frames[idx].canvas; nw = s.width; nh = s.height
-  } else { img = s.img; nw = img.naturalWidth; nh = img.naturalHeight }
-  if (!img || !nw || !nh) { return }
-  const th = 90 * (this.gifScale || 1.0); const sc = th / nh; const dw = nw * sc
-  ctx.save(); ctx.globalAlpha = 0.9
-  for (let i = 0; i < s.boids.length; i++) { const b = s.boids[i]; ctx.drawImage(img, b.x - dw / 2, b.y - th / 2, dw, th) }
+  // Con più stormi in scena le GIF sono più piccole, così non si accavallano
+  const crowd = swarms.length > 1 ? Math.max(0.55, 1 - (swarms.length - 1) * 0.12) : 1
+  ctx.save()
+  ctx.globalAlpha = 0.9
+  for (let k = 0; k < swarms.length; k++) {
+    const s = swarms[k]
+    if (!s || !s.ready) { continue }
+    this.stepSwarm(s, W, H, bass)
+    let img = null, nw = 0, nh = 0
+    if (s.frames) {
+      let total = 0; for (const f of s.frames) { total += f.delay }
+      const t = (performance.now() - s.start) % Math.max(1, total)
+      let acc = 0, idx = 0
+      for (let i = 0; i < s.frames.length; i++) { acc += s.frames[i].delay; if (t < acc) { idx = i; break } }
+      img = s.frames[idx].canvas; nw = s.width; nh = s.height
+    } else if (s.img) {
+      img = s.img; nw = img.naturalWidth; nh = img.naturalHeight
+    }
+    if (!img || !nw || !nh) { continue }
+    const th = 90 * (this.gifScale || 1.0) * crowd
+    const sc = th / nh; const dw = nw * sc
+    for (let i = 0; i < s.boids.length; i++) {
+      const b = s.boids[i]
+      ctx.drawImage(img, b.x - dw / 2, b.y - th / 2, dw, th)
+    }
+  }
   ctx.restore()
 }
 
@@ -842,7 +909,8 @@ Background.prototype.off = function () {
   if (this.swarmAuto) { clearInterval(this.swarmAuto); this.swarmAuto = null }
   this.mode = 'none'
   for (let i = 0; i < this.layers.length; i++) { if (this.layers[i].type === 'video') { this.layers[i].img.pause() } }
-  this.layers = []; this.swarm = null
+  this.layers = []
+  this.clearSwarms()
   if (this.video) { this.video.pause() }
   // Resetta il feedback canvas (azzera la scia residua)
   if (this.fbCtx && this.fbCanvas) { this.fbCtx.clearRect(0, 0, this.fbCanvas.width, this.fbCanvas.height) }

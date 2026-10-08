@@ -130,7 +130,7 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 |-------|--------|
 | `Alt+B` | background random dal tag corrente |
 | `Alt+Shift+B` | background auto-cycle |
-| `Alt+G` | stormo GIF (boids) |
+| `Alt+G` / `Alt+Shift+G` | **aggiungi** stormo GIF (boids) / azzera tutti gli stormi |
 | `Alt+W` | big text overlay |
 | `Alt+Z` | webcam (attiva anche la maschera viso) |
 | `Alt+H` | maschera emoji sul viso, **glitchata dal suo shader dedicato** |
@@ -183,6 +183,11 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | `tag:<nome>` | cambia il tag **globale** (bg + gif + 3D senza override) |
 | `tagbg:` `taggif:` `tag3d:` `tagfont:` | tag **per canale** (vuoto = torna al globale) |
 | `tags` | stampa i tag dei quattro canali |
+| `tagrotate` / `tagrotate:<canale>` | toglie i pin e riattiva la rotazione dei tag |
+| `swarms` | stato di stormi GIF e modelli 3D in scena |
+| `swarmclear` | azzera tutti gli stormi |
+| `swarmmax:<n>` | stormi massimi (1–8, default 4) |
+| `models:<n>` | modelli 3D massimi (1–16, default 10) |
 | `text:HELLO` | big text immediato |
 | `ph:<query>` | **Poly Haven** (CC0, senza token): cerca e carica un modello |
 | `phadd:<query>` | come `ph:` ma **aggiunge** invece di sostituire |
@@ -200,6 +205,21 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | `inject:nome` | inietta un modulo caricato |
 | `netstats` | contatori rete (`ok / timeout / annullate / errori / in corso`) e stato cache |
 | `netcache` | svuota la cache di rete su disco |
+
+---
+
+## 4a. Tag: rotazione per canale e stormi multipli
+
+| Termine | Significato |
+|---------|-------------|
+| **rotazione del tag** | ogni volta che si carica un elemento **nuovo** (stormo GIF o modello 3D) il tag di quel canale **avanza** nella lista: due stormi o tre modelli pescano sempre da ricerche diverse |
+| **pin** | un override (`tag3d:matrix`, `taggif:lucifer`, …) **ferma** la rotazione di quel canale. Togliere l'override la riattiva |
+| **`client.nextTagFor(kind)`** | avanza e restituisce il tag del canale; se il canale è pinnato restituisce il pin senza avanzare |
+| **`client.resetTagRotation()`** | azzera i cursori: chiamato da `Cmd+Shift+T` e da `Cmd+W` |
+| **stormo multiplo** | `background.swarms` è un array (max `maxSwarms`, default 4). Ogni stormo ha la sua GIF, il suo `<img>` nascosto, i suoi boid e la sua zona (slot) |
+| **`crowd`** | con più stormi in scena le GIF rimpiccioliscono (`max(0.55, 1-(n-1)*0.12)`) per non accavallarsi |
+| **`_dropSwarm(i)`** | rimuove uno stormo e libera il suo `<img>`; oltre il massimo esce sempre il più vecchio |
+| **modelli 3D** | fino a 10 in scena (`maxModels`), regolabile con `models:<n>` |
 
 ---
 

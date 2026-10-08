@@ -225,6 +225,51 @@ function Commander (client) {
         client._modsNotice = { names: (hits.length ? hits : [pick && pick.id]).filter(Boolean).slice(0, 5), until: performance.now() + 5000 }
       }).catch(e => console.warn('Commander', 'Poly Haven errore:', e.message))
     },
+    // === STORMI GIF E MODELLI 3D (multipli) ===
+    // swarms → stato degli stormi attivi
+    swarms: () => {
+      const sw = client.background.swarms || []
+      console.log('Commander', '=== STORMI GIF (' + sw.length + '/' + (client.background.maxSwarms || 4) + ') ===')
+      sw.forEach((s, i) => console.log('Commander', `  [${i}] tag:${s.tag || '?'} ${s.ready ? 'pronto' : 'caricamento...'} boid:${s.boids ? s.boids.length : 0}`))
+      const md = (client.model3d && client.model3d.models) || []
+      console.log('Commander', '=== MODELLI 3D (' + md.length + '/' + (client.model3d ? client.model3d.maxModels : '?') + ') ===')
+      md.forEach((e, i) => console.log('Commander', `  [${i}] ${(e.obj && e.obj.name) || 'model'}`))
+      client._modsNotice = { names: ['swarm ' + sw.length, '3d ' + md.length], until: performance.now() + 4000 }
+      client.update()
+    },
+    // swarmclear → azzera tutti gli stormi
+    swarmclear: () => { client.background.clearSwarms(); client.update() },
+    // swarmmax:<n> → quanti stormi tenere in scena (1-8)
+    swarmmax: (p) => {
+      const n = parseInt(p.str)
+      if (isNaN(n)) { console.log('Commander', 'swarmmax:<n>  (attuale ' + (client.background.maxSwarms || 4) + ')'); return }
+      client.background.maxSwarms = Math.max(1, Math.min(8, n))
+      console.log('Commander', 'stormi massimi:', client.background.maxSwarms)
+    },
+    // models:<n> → quanti modelli 3D tenere in scena (1-16)
+    models: (p) => {
+      const n = parseInt(p.str)
+      if (isNaN(n)) { console.log('Commander', 'models:<n>  (attuale ' + (client.model3d ? client.model3d.maxModels : '?') + ')'); return }
+      if (!client.model3d) { return }
+      client.model3d.maxModels = Math.max(1, Math.min(16, n))
+      console.log('Commander', 'modelli massimi:', client.model3d.maxModels)
+    },
+    // tagrotate          → togli tutti i pin e riattiva la rotazione
+    // tagrotate:<canale> → solo quel canale (bg | gif | model | font)
+    tagrotate: (p) => {
+      const k = (p && p.str ? p.str : '').trim().toLowerCase()
+      const kinds = ['bg', 'gif', 'model', 'model3d', 'font']
+      if (k && kinds.indexOf(k) >= 0) {
+        const kind = k === 'model3d' ? 'model' : k
+        client.setTagFor(kind, null)
+        console.log('Commander', 'rotazione riattivata su ' + kind + ' →', client.tagFor(kind))
+      } else {
+        client.resetTagRotation()
+        console.log('Commander', 'rotazione tag riattivata su tutti i canali →', client.tagSummary())
+      }
+      client._modsNotice = { names: ['tagrotate ' + (k || 'tutti')], until: performance.now() + 3000 }
+      client.update()
+    },
     // === RETE / CACHE ===
     // netstats → contatori rete + stato cache su disco
     netstats: (p) => {
