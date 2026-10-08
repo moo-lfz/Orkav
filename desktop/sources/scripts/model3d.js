@@ -182,18 +182,25 @@ Model3d.prototype.loadRandom = async function (tag, opts) {
   const add = !!(opts && opts.add)
   if (!add) this.clearModels()
   const term = tag || (this.client && this.client.currentTag) || 'low poly'
+  this.status('3D ' + (add ? '+ ' : '') + term)
   if (this.tvToken) {
     const okTv = await this.loadFromThingiverse(term)
-    if (okTv) { console.log('[Model3d] attivo (Thingiverse):', term); return true }
+    if (okTv) { this.status(null); console.log('[Model3d] attivo (Thingiverse):', term); return true }
     console.warn('[Model3d] Thingiverse fallito, provo Poly Haven')
   }
   const okPh = await this.loadFromPolyHaven(term)
-  if (okPh) { console.log('[Model3d] attivo (Poly Haven):', term); return true }
+  if (okPh) { this.status(null); console.log('[Model3d] attivo (Poly Haven):', term); return true }
   console.warn('[Model3d] Poly Haven fallito, uso il fallback GLB locale')
   const url = this.pickModelUrl(tag)
   const ok = await this.loadModel(url)
+  this.status(null)
   console.log('[Model3d] attivo (fallback GLB):', url)
   return ok
+}
+
+// Messaggio di stato mostrato nel terminale di Orkav (riga telemetria).
+Model3d.prototype.status = function (msg) {
+  try { if (this.client && this.client.setLoader) { this.client.setLoader(msg) } } catch (e) {}
 }
 
 Model3d.prototype.stop = function () {
@@ -244,9 +251,26 @@ Model3d.PH_ALIAS = {
 
 Model3d.prototype._phAssets = async function () {
   if (this._phCache) return this._phCache
-  const res = await fetch(Model3d.PH_API + '/assets?t=models')
-  if (!res.ok) throw new Error('Poly Haven HTTP ' + res.status)
-  this._phCache = await res.json()
+  // L'indice è ~530 KB e cambia raramente: cache su disco per 7 giorni
+  // (userData/cache/ph_index_v1.json via Net). Prima era riscaricato a ogni avvio.
+  const CACHE_KEY = 'ph_index_v1'
+  const TTL = 7 * 24 * 3600 * 1000
+  const hit = window.Net ? await Net.cacheLoad(CACHE_KEY, TTL) : null
+  if (hit && typeof hit === 'object') {
+    this._phCache = hit
+    const age = Math.round((Net.cacheAge(CACHE_KEY) || 0) / 3600000)
+    console.log('[Model3d] Poly Haven: indice in cache (' + Object.keys(hit).length + ' modelli, ' + age + 'h fa)')
+    return this._phCache
+  }
+  const ctl = window.Net ? Net.begin('ph-index') : null
+  const json = window.Net
+    ? await Net.json(Model3d.PH_API + '/assets?t=models', ctl ? { signal: ctl.signal } : {}, 8000)
+    : await fetch(Model3d.PH_API + '/assets?t=models').then(r => { if (!r.ok) throw new Error('Poly Haven HTTP ' + r.status); return r.json() })
+  this._phCache = json
+  if (window.Net && this._phCache) {
+    const ok = await Net.cacheSave(CACHE_KEY, this._phCache)
+    if (!ok) { console.warn('[Model3d] indice Poly Haven non salvato in cache') }
+  }
   console.log('[Model3d] Poly Haven:', Object.keys(this._phCache).length, 'modelli disponibili (CC0)')
   return this._phCache
 }
@@ -301,7 +325,10 @@ Model3d.prototype.loadFromPolyHaven = async function (term, res) {
     const assets = await this._phAssets()
     const pick = this.pickPolyHaven(assets, term)
     if (!pick) throw new Error('nessun modello Poly Haven')
-    const fres = await fetch(Model3d.PH_API + '/files/' + encodeURIComponent(pick.id))
+    const fresCtl = window.Net ? Net.begin('ph-files') : null
+    const fres = window.Net
+      ? await Net.fetch(Model3d.PH_API + '/files/' + encodeURIComponent(pick.id), fresCtl ? { signal: fresCtl.signal } : {}, 6000)
+      : await fetch(Model3d.PH_API + '/files/' + encodeURIComponent(pick.id))
     if (!fres.ok) throw new Error('Poly Haven files HTTP ' + fres.status)
     const files = await fres.json()
     const wanted = res || '1k'
@@ -361,7 +388,7 @@ Model3d.prototype._tvFetch = async function (path) {
   if (!this.tvToken) throw new Error('token Thingiverse mancante')
   const sep = path.indexOf('?') >= 0 ? '&' : '?'
   const url = this.tvBase + path + sep + 'access_token=' + encodeURIComponent(this.tvToken)
-  const res = await fetch(url, { headers: { Accept: 'application/json' } })
+  const res = await Net.fetch(url, { headers: { Accept: 'application/json' } }, 6000)
   if (!res.ok) {
     // 401 = token assente/scaduto → messaggio azionabile
     if (res.status === 401) {

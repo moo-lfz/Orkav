@@ -108,7 +108,9 @@ Background.prototype.loadSwarmByTag = function(tag) {
 Background.prototype.httpGet = function (url, cb, eb, redirects) {
   redirects = redirects || 0
   // Renderer sandbox: niente Buffer/require. Uso fetch + Uint8Array/TextDecoder.
-  fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+  // Net.fetch applica un timeout: senza di esso una CDN lenta blocca la coda.
+  const ctl = Net.controller('bg-http') || Net.begin('bg-http')
+  Net.fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: ctl.signal }, 5000)
     .then((res) => {
       if (res.status >= 300 && res.status < 400 && res.headers.get('location') && redirects < 5) {
         this.httpGet(res.headers.get('location'), cb, eb, redirects + 1); return
@@ -301,17 +303,28 @@ Background.prototype.drawSwarm = function (ctx, W, H) {
 
 Background.prototype.fetchCommons = function (tag, kind) {
   const search = (kind === 'video' ? 'filetype:video ' : 'filetype:bitmap ') + tag
-  const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=' + encodeURIComponent(search) + '&gsrnamespace=6&gsrlimit=12&prop=imageinfo&iiprop=url|name&iiurlwidth=900'
-  fetch(url).then(r => r.json()).then(json => {
+  // iiprop=size serve a scartare i video enormi prima di scaricarli (erano la
+  // causa principale dei blocchi: un .ogv da 200 MB intasa il decoder).
+  const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=' + encodeURIComponent(search) + '&gsrnamespace=6&gsrlimit=12&prop=imageinfo&iiprop=url|name|size&iiurlwidth=900'
+  const ctl = Net.begin('bg-fetch')
+  Net.json(url, { signal: ctl.signal }, 4500).then(json => {
+    if (Net.stale('bg-fetch', ctl.signal)) { return }
     const pages = json.query && json.query.pages
     if (!pages) { throw new Error('no pages') }
     const urls = []
+    const MAXV = 15 * 1000 * 1000
     for (const k in pages) {
       const ii = pages[k].imageinfo && pages[k].imageinfo[0]
       if (!ii) { continue }
       const name = (ii.name || ii.url || '').toLowerCase()
-      if (kind === 'video' && /\.(mp4|ogv)$/.test(name)) { urls.push(ii.url) }
-      else if (kind === 'img' && /\.(jpg|jpeg|png)$/.test(name)) { urls.push(ii.thumburl || ii.url) }
+      if (kind === 'video') {
+        if (!/\.(mp4|webm|ogv)$/.test(name)) { continue }
+        if (ii.size && ii.size > MAXV) { continue }
+        urls.push(ii.url)
+      } else if (/\.(jpg|jpeg|png|webp)$/.test(name)) {
+        // le thumb da 900px sono sempre leggere: ii.url no
+        urls.push(ii.thumburl || ii.url)
+      }
     }
     if (!urls.length) { throw new Error('none') }
     const src = urls[Math.floor(Math.random() * urls.length)]
@@ -324,15 +337,29 @@ Background.prototype.fetchArchive = function () {
   const wantVideo = Math.random() > 0.6
   const mt = wantVideo ? 'movies' : 'image'
   const q = encodeURIComponent(`subject:(${tag}) AND mediatype:(${mt})`)
-  fetch(`https://archive.org/advancedsearch.php?q=${q}&fl[]=identifier&rows=50&page=1&output=json`).then(r => r.json()).then(json => {
+  const ctl = Net.begin('bg-fetch')
+  Net.json(`https://archive.org/advancedsearch.php?q=${q}&fl[]=identifier&rows=50&page=1&output=json`, { signal: ctl.signal }, 4500).then(json => {
+    if (Net.stale('bg-fetch', ctl.signal)) { return }
     const docs = json.response && json.response.docs
     if (!docs || !docs.length) { throw new Error('no docs') }
     const id = docs[Math.floor(Math.random() * docs.length)].identifier
-    return fetch(`https://archive.org/metadata/${id}`).then(r => r.json()).then(meta => {
+    return Net.json(`https://archive.org/metadata/${id}`, { signal: ctl.signal }, 4500).then(meta => {
+      if (Net.stale('bg-fetch', ctl.signal)) { return }
       const files = meta.files || []
-      const vids = files.filter(f => /\.(mp4|ogv)$/.test(f.name))
-      const imgs = files.filter(f => /\.(jpg|jpeg|png)$/.test(f.name))
-      if (wantVideo && vids.length) { this.addVideoLayer('https://archive.org/download/' + id + '/' + encodeURIComponent(vids[Math.floor(Math.random() * vids.length)].name)) }
+      const MAXV = 12 * 1000 * 1000
+      const small = (f, max) => {
+        const n = parseInt(f.size, 10)
+        return !n || n <= max
+      }
+      // Ordine di preferenza: mp4 (decodifica HW) → webm → ogv (spesso enormi)
+      const vids = files
+        .filter(f => /\.(mp4|webm|ogv)$/i.test(f.name) && small(f, MAXV))
+        .sort((a, b) => {
+          const rank = (f) => /\.mp4$/i.test(f.name) ? 0 : (/\.webm$/i.test(f.name) ? 1 : 2)
+          return rank(a) - rank(b)
+        })
+      const imgs = files.filter(f => /\.(jpg|jpeg|png)$/i.test(f.name) && small(f, 6 * 1000 * 1000))
+      if (wantVideo && vids.length) { this.addVideoLayer('https://archive.org/download/' + id + '/' + encodeURIComponent(vids[0].name)) }
       else if (imgs.length) { this.addLayerFromUrl('https://archive.org/download/' + id + '/' + encodeURIComponent(imgs[Math.floor(Math.random() * imgs.length)].name)) }
       else { throw new Error('no files') }
     })

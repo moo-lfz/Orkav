@@ -156,6 +156,23 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | `find:testo` / `select:x;y;w;h` / `write:H;x;y` | editing |
 | `mods` | elenca i moduli `.orca` caricati |
 | `inject:nome` | inietta un modulo caricato |
+| `netstats` | contatori rete (`ok / timeout / annullate / errori / in corso`) e stato cache |
+| `netcache` | svuota la cache di rete su disco |
+
+---
+
+## 4c. Rete, cache e prefetch
+
+| Termine | Significato |
+|---------|-------------|
+| **`Net`** | wrapper unico di `fetch` nel renderer (`scripts/lib/net.js`): timeout, annullamento, cache, contatori |
+| **canale** | nome logico di una richiesta (`bg-fetch`, `bg-http`, `ph-index`, `ph-files`, `tv`). `Net.begin(canale)` annulla la richiesta precedente dello stesso canale |
+| **richiesta `quiet`** | richiesta di background (prefetch): non entra in `Net.busy()` né nell'indicatore di caricamento |
+| **`Net.stale(canale, signal)`** | true se nel frattempo il canale è stato rilanciato: la risposta vecchia va ignorata invece di sovrascrivere quella nuova |
+| **cache su disco** | `userData/orkav-cache/<chiave>.json`, scrittura atomica (tmp + rename) via IPC. `localStorage` su `file://` **non persiste** in Electron, quindi non basta |
+| **TTL** | vita della cache: l'indice Poly Haven dura 7 giorni |
+| **prefetch** | riscaldamento in background (`scripts/prefetch.js`): parte 2.5 s dopo il boot, una risorsa alla volta, solo in idle |
+| **indicatore di caricamento** | `\| 3D props` / `/ net 2` a sinistra della telemetria di Orkav, sparisce dopo 10 s |
 
 ---
 

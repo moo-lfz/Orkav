@@ -50,6 +50,9 @@ FaceTracker.LM = {
 FaceTracker.prototype.init = function () {
   if (this._initPromise) return this._initPromise
   this.loading = true
+  // Flag per il prefetch: MediaPipe (3.7 MB) si scarica in background solo
+  // a partire dal secondo avvio in cui la webcam viene usata.
+  try { window.localStorage.setItem('orkav_webcam_used', '1') } catch (e) {}
   this._initPromise = (async () => {
     try {
       const CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14'

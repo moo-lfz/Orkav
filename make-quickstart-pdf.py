@@ -155,6 +155,7 @@ row("BPM rosso", "play attivo — Orkav sta mandando il sync Link", RED)
 row(">  lampeggia", "batte col sequencer (=/+ alternati)")
 row("P<n> verde", "peer Ableton Link collegati")
 row("C:/G:", "carico CPU/GPU + FPS + temperatura nel monitor")
+row("| 3D props", "caricamento in corso (rete/3D) — sparisce da solo")
 gap()
 
 # === SEQUENCER ===
@@ -165,6 +166,16 @@ row("Cmd+G", "guida operatori + lista comandi a schermo")
 row("Cmd+L", "carica moduli .orca multipli (inject:nome dal commander)")
 row("Cmd+Enter", "fullscreen")
 row("Cmd+S", "esporta patch .orca")
+gap()
+
+# === RETE / CACHE ===
+section("RETE · CACHE · PREFETCH")
+row("netstats", "contatori rete (ok/timeout/annullate) + stato cache", GREEN)
+row("netcache", "svuota la cache su disco (indice Poly Haven)")
+row("prefetch", "three.js + indice Poly Haven scaricati in background al boot")
+row("", "— MediaPipe (3.8 MB) solo se la webcam e' gia' stata usata")
+row("timeout", "ogni richiesta HTTP scade in 4-8 s: niente piu' blocchi")
+row("video", "filtrati a max 12-15 MB, preferenza mp4 > webm > ogv")
 
 # Footer (solo ultima pagina)
 last = pages[-1]

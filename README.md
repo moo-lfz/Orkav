@@ -370,10 +370,36 @@ Il rendering gira su `requestAnimationFrame`; queste sono le ottimizzazioni atti
 | **3D a 30 fps + 960×540** (era 60 fps a 1280×720) | **−75%** del costo 3D |
 | **`querySelectorAll` ogni 2 s** (era a ogni frame) | elimina una scansione del DOM 60 volte al secondo |
 | **Banda audio lisciata** (EMA con attacco rapido / rilascio lento) per i modelli 3D | reazioni fluide invece che a scatti |
+| **Rete con timeout** — ogni richiesta HTTP passa da `Net` con `AbortController` (4–8 s) | una CDN lenta non blocca più la coda |
+| **Cache su disco dell'indice Poly Haven** (530 KB, TTL 7 giorni) in `userData/orkav-cache/` | primo modello istantaneo: **515 ms → 9 ms** |
+| **Prefetch in idle** — three.js + loader, indice Poly Haven, MediaPipe si scaricano in background dopo il boot | Alt+P / Alt+Z non aspettano più la rete |
+| **Filtro dimensione sui video** di Wikimedia/archive.org (max 12–15 MB, preferenza mp4 → webm → ogv) | niente più download da centinaia di MB che ingolfavano il decoder |
+| **Annullamento per canale** — una nuova richiesta di background/GIF annulla la precedente | niente risposte fuori ordine che sovrascrivevano il contenuto |
 
 Misurato con un profiler per-frame (prima → dopo): **5.4–7.1 ms → 2.4–2.7 ms per frame**, con gli fps passati da ~60 a **~80–120**.
 
 Nelle modalità con input di testo (tag, big text, ricerca 3D, commander) la UI si ridisegna ogni frame, così digitare resta immediato.
+
+### Rete: `Net` (`sources/scripts/lib/net.js`)
+
+Tutto il traffico del renderer passa da qui: `Net.fetch/json/bytes` applicano un timeout, `Net.begin(canale)`/`Net.stale(canale, signal)` gestiscono l'annullamento, `Net.cacheLoad/cacheSave` la cache persistente.
+
+> `localStorage` su origine `file://` **non viene scritto su disco** in Electron: la cache affidabile è il file in `userData/orkav-cache/<chiave>.json`, scritto in modo atomico via IPC. `localStorage` resta solo come livello veloce di sessione.
+
+- `netstats` — contatori (`ok / timeout / annullate / errori / in corso`) e stato della cache
+- `netcache` — svuota la cache di rete (l'indice viene riscaricato al prossimo Alt+P)
+
+### Prefetch in background (`sources/scripts/prefetch.js`)
+
+Parte 2.5 s dopo il boot, una risorsa alla volta, solo nei momenti di idle (`requestIdleCallback`) e si mette in pausa se una richiesta vera è in corso. Le richieste di prefetch sono marcate `quiet` e non entrano nell'indicatore di caricamento.
+
+| Cosa | Peso | Quando |
+|------|------|--------|
+| three.js + GLTFLoader/STLLoader/OBJLoader/RoomEnvironment | ~1.35 MB | sempre (se il 3D non è già attivo) |
+| indice Poly Haven (521 modelli CC0) | ~530 KB | se la cache ha più di 7 giorni |
+| MediaPipe + modello face landmarker | ~3.8 MB | solo se la webcam è già stata usata (`orkav_webcam_used`) |
+
+Lo stato dei caricamenti compare nel terminale, a sinistra della telemetria: `| 3D props`, `/ net 2`. Scompare da solo dopo 10 s.
 
 ## Rendering (fps indipendenti dal BPM)
 

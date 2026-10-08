@@ -705,7 +705,11 @@ function Client () {
     // Nelle modalità con input di testo la UI si ridisegna OGNI frame, così
     // digitare resta immediato (il costo è solo quello del testo, non dello
     // spettro FFT che è la parte pesante).
-    const uiFast = !!(this.tagMode || this.bigTextMode || this.fxTextMode || this.modelSearchMode || this.commander.isActive)
+    // Solo il loader esplicito (3D/webcam) forza il ridisegno a ogni frame:
+    // usare Net.busy() qui riporterebbe la UI al percorso lento durante un
+    // qualunque download. Le richieste "quiet" (prefetch) non contano mai.
+    const loading = !!(this._loaderMsg && (now - (this._loaderAt || 0) < 10000))
+    const uiFast = !!(this.tagMode || this.bigTextMode || this.fxTextMode || this.modelSearchMode || this.commander.isActive || loading)
     if (uiFast || now - this._lastUi > this._uiInterval) {
       this._lastUi = now
       this.uiCtx.clearRect(0, 0, this.uiEl.width, this.uiEl.height)
@@ -1312,6 +1316,14 @@ function Client () {
     if(temp==null||temp<=0){temp=40+cpu*45}
     return `C:${Math.round(cpu*100)} G:${Math.round(gpu*100)} ${Math.round(this.fps)}f ${Math.round(temp)}°`
   }
+  // Segnala un caricamento in corso (rete, 3D, media). Mostrato a schermo per 10 s.
+  this.setLoader = (msg) => { this._loaderMsg = msg || null; this._loaderAt = Date.now() }
+  this.loadString = () => {
+    const spin = ['|','/','-','\\'][Math.floor(this.orca.f / 3) % 4]
+    if (this._loaderMsg && (Date.now() - (this._loaderAt || 0)) < 10000) { return spin + ' ' + this._loaderMsg }
+    if (window.Net && Net.busy()) { return spin + ' net ' + Net.pending() }
+    return null
+  }
  this.drawInterface = () => {
   const ctx = this.context
   const tile = this.tile
@@ -1340,6 +1352,13 @@ function Client () {
   const tele = this.teleString()
   const tX = this.orca.w - tele.length - 1
   if (tX > this.grid.w * 5) { this.writeTerm(tele, tX, termRow, tele.length + 1, 1) }
+
+  // Stato caricamenti (rete / 3D) a sinistra della telemetria, solo quando attivo.
+  const lmsg = this.loadString()
+  if (lmsg) {
+    const lX = Math.max(this.grid.w * 5, tX - lmsg.length - 2)
+    if (lX > this.grid.w * 5) { this.writeTerm(lmsg, lX, termRow, lmsg.length + 1, 3) }
+  }
 
   // Seconda riga (termRow2) — mode-specific content first
   if (this.modelSearchMode) {

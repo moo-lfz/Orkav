@@ -193,6 +193,32 @@ function Commander (client) {
         client._modsNotice = { names: (hits.length ? hits : [pick && pick.id]).filter(Boolean).slice(0, 5), until: performance.now() + 5000 }
       }).catch(e => console.warn('Commander', 'Poly Haven errore:', e.message))
     },
+    // === RETE / CACHE ===
+    // netstats → contatori rete + stato cache su disco
+    netstats: (p) => {
+      if (!window.Net) { console.log('Commander', 'Net non disponibile'); return }
+      const s = Net.stats
+      console.log('Commander', `=== RETE === ok:${s.ok} timeout:${s.timeout} annullate:${s.abort} errori:${s.error} in corso:${Net.pending()}`)
+      const KEY = 'ph_index_v1'
+      Net.cacheLoad(KEY, 30 * 24 * 3600 * 1000).then((v) => {
+        const age = Net.cacheAge(KEY)
+        const n = v ? Object.keys(v).length : 0
+        console.log('Commander', v
+          ? ` cache Poly Haven: ${n} modelli, ${Math.round(age / 3600000)}h fa`
+          : ' cache Poly Haven: vuota (verrà scaricata al primo Alt+P)')
+        client._modsNotice = { names: ['net ok:' + s.ok + ' to:' + s.timeout, v ? 'cache ' + n : 'cache vuota'], until: performance.now() + 5000 }
+        client.update()
+      })
+    },
+    // netcache → svuota la cache su disco (indice Poly Haven ecc.)
+    netcache: (p) => {
+      if (!window.Net) { return }
+      Net.cacheDrop('ph_index_v1').then(() => {
+        console.log('Commander', 'cache di rete svuotata')
+        client._modsNotice = { names: ['cache svuotata'], until: performance.now() + 3000 }
+        client.update()
+      })
+    },
     // === THINGIVERSE (modelli 3D, richiede token approvato) ===
     // tvhelp → istruzioni per ottenere il token (stampate in console)
     tvhelp: (p) => {

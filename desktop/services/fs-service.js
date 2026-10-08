@@ -1,4 +1,4 @@
-const { ipcMain } = require('electron');
+const { ipcMain, app } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -54,6 +54,55 @@ function createFsService(win) {
     const safe = resolveAllowed(filePath);
     if (!safe) throw new Error('Path not allowed: ' + filePath);
     return fs.statSync(safe);
+  });
+
+  // ---------------------------------------------------------------------
+  // Cache chiave/valore su disco (userData/cache/<key>.json).
+  // Serve perché localStorage su origine file:// NON persiste su disco in
+  // Electron: l'indice Poly Haven (~530 KB) veniva riscaricato a ogni avvio.
+  // La chiave è sanificata a [a-z0-9_-]: nessun path arbitrario, nessun
+  // traversal possibile (a differenza di fs:*).
+  // ---------------------------------------------------------------------
+  function cachePath(key) {
+    const k = String(key == null ? '' : key).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (!k || k.length > 64) return null;
+    return path.join(app.getPath('userData'), 'orkav-cache', k + '.json');
+  }
+
+  ipcMain.handle('cache:get', (event, key) => {
+    if (!isTrustedSender(event, win)) throw new Error('Untrusted sender');
+    const p = cachePath(key);
+    if (!p) return null;
+    try {
+      const raw = fs.readFileSync(p, 'utf8');
+      const box = JSON.parse(raw);
+      if (!box || typeof box.t !== 'number') return null;
+      return box;
+    } catch (e) { return null; }
+  });
+
+  ipcMain.handle('cache:set', (event, { key, value }) => {
+    if (!isTrustedSender(event, win)) throw new Error('Untrusted sender');
+    const p = cachePath(key);
+    if (!p) return false;
+    try {
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      // scrittura atomica: tmp + rename, così un crash non lascia file corrotti
+      const tmp = p + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify({ t: Date.now(), v: value }));
+      fs.renameSync(tmp, p);
+      return true;
+    } catch (e) {
+      console.error('[fs-service] cache:set', key, e && e.message ? e.message : e);
+      return false;
+    }
+  });
+
+  ipcMain.handle('cache:del', (event, key) => {
+    if (!isTrustedSender(event, win)) throw new Error('Untrusted sender');
+    const p = cachePath(key);
+    if (!p) return false;
+    try { fs.unlinkSync(p); return true } catch (e) { return false }
   });
 }
 

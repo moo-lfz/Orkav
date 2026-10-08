@@ -25,6 +25,11 @@ contextBridge.exposeInMainWorld('api', {
     existsSync: (path) => ipcRenderer.invoke('fs:existsSync', path),
     statSync: (path) => ipcRenderer.invoke('fs:statSync', path)
   },
+  cache: {
+    get: (key) => ipcRenderer.invoke('cache:get', key),
+    set: (key, value) => ipcRenderer.invoke('cache:set', { key, value }),
+    del: (key) => ipcRenderer.invoke('cache:del', key)
+  },
   systeminformation: {
     onUpdate: (callback) => ipcRenderer.on('systeminfo:update', (event, data) => callback(data))
   },
