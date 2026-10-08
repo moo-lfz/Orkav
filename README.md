@@ -293,7 +293,18 @@ La dimensione è `max(faceW × W × 2.5, faceH × H × 1.75)`: si adatta sia all
 
 ## Stormi GIF multipli e modelli 3D multipli
 
-`Alt+G` **aggiunge** uno stormo (non sostituisce): fino a `maxSwarms` (default **4**), oltre i quali esce il più vecchio. Ogni stormo ha la **sua** GIF, il suo `<img>` nascosto, i suoi boid e la **sua zona dello schermo** dall'allocatore di slot, e con più stormi in scena le GIF rimpiccioliscono da sole (`crowd`) così non si accavallano.
+`Alt+G` **aggiunge** uno stormo (non sostituisce): fino a `maxSwarms` (default **4**), oltre i quali esce il più vecchio. Ogni stormo ha la **sua** GIF, il suo `<img>` nascosto, i suoi boid e la **sua zona dello schermo** dall'allocatore di slot.
+
+**La GIF mantiene la sua dimensione** (`gifScale`): con più stormi in scena è lo *stormo* a espandersi, non l'immagine a rimpicciolirsi. Lo stormo si distende su un'area proporzionale allo schermo:
+
+| | prima | ora |
+|---|---|---|
+| spawn | 350×250 px fissi (un grumo stretto) | `max(460, W×0.62)` × `max(340, H×0.52)` |
+| estensione misurata | ~350×250 px | **981×596 px = 118%×77% dello schermo** |
+| boid per stormo | 17 | **30** (`swarmboids:<n>`, tetto 110 in totale fra tutti gli stormi) |
+| teleport | traslazione rigida di tutto il gruppo | traslazione **+ jitter per-boid**: lo stormo si ri-sparpaglia |
+| coesione | 0.0008 | **0.00035** (con separazione più forte fino a 130px) |
+| confini | 60px dai bordi | 30px: lo stormo usa quasi tutto lo schermo |
 
 | Tasto | Azione |
 |-------|--------|
@@ -494,6 +505,7 @@ Un canale **smette di ruotare** quando lo si **pinna** con un override (`tag3d:m
 | `swarms` | stato degli stormi GIF e dei modelli 3D in scena |
 | `swarmclear` | azzera tutti gli stormi |
 | `swarmmax:<n>` | quanti stormi tenere (1–8, default 4) |
+| `swarmboids:<n>` | boid per stormo (6–60, default 30): allarga/restringe lo stormo |
 | `models:<n>` | quanti modelli 3D tenere (1–16, default 10) |
 
 `Cmd+Shift+T` cicla il tag **globale** e ricarica background, GIF e (se attivo) modello 3D. `Alt+Shift+T` cicla **solo** il tag dei modelli 3D.

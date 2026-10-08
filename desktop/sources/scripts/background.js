@@ -4,6 +4,9 @@ function Background (client) {
   this.mode = 'none'; this.video = null; this.layers = []
   // STORMI GIF: array (multipli). `swarm` resta l'ultimo pronto per compatibilita'.
   this.swarms = []; this.swarm = null; this.maxSwarms = 4
+  // Boid per stormo e tetto totale (lo stormo si espande ma il costo di disegno
+  // resta limitato: ogni boid è una drawImage della GIF).
+  this.swarmBoids = 30; this.maxTotalBoids = 110
   this.webcam = null; this.webcamStream = null
   this.autoTimer = null; this.autoUntil = 0; this.lastT = 0; this.localUsed = 0
   this.swarmAuto = null
@@ -135,28 +138,50 @@ Background.prototype.pickTag = function (kind) {
 }
 
 // --- HTTP (tutto passa da Net: timeout, annullamento per canale) ---
+// NOTA IMPORTANTE: cb/eb devono poter essere chiamate UNA SOLA VOLTA.
+// Se il callback di successo lancia (JSON malformato, campo mancante...) senza
+// questa guardia scattava ANCHE il catch, quindi eb() partiva due volte: chi
+// consuma la catena delle sorgenti (gli stormi GIF) avanzava di DUE posizioni e
+// saltava la ricerca per tag finendo sulla categoria generica.
 Background.prototype.httpGet = function (url, cb, eb, redirects) {
   redirects = redirects || 0
+  let done = false
+  const ok = (v) => { if (done) { return } done = true; cb(v) }
+  const fail = () => { if (done) { return } done = true; if (eb) { eb() } }
   // Renderer sandbox: niente Buffer/require. Uso fetch + Uint8Array/TextDecoder.
   // Net.fetch applica un timeout: senza di esso una CDN lenta blocca la coda.
   const ctl = Net.controller('bg-http') || Net.begin('bg-http')
   Net.fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: ctl.signal }, 5000)
     .then((res) => {
       if (res.status >= 300 && res.status < 400 && res.headers.get('location') && redirects < 5) {
-        this.httpGet(res.headers.get('location'), cb, eb, redirects + 1); return
+        this.httpGet(res.headers.get('location'), ok, fail, redirects + 1); return
       }
-      if (res.status !== 200) { eb(); return }
-      res.arrayBuffer().then((ab) => cb(new Uint8Array(ab))).catch(eb)
+      if (res.status !== 200) { fail(); return }
+      res.arrayBuffer().then((ab) => { try { ok(new Uint8Array(ab)) } catch (e) { fail() } }).catch(fail)
     })
-    .catch(() => eb())
+    .catch(fail)
 }
 
 Background.prototype.fetchText = function (url, cb, eb) {
-  this.httpGet(url, (u8) => { try { cb(new TextDecoder('utf-8').decode(u8)) } catch (e) { eb() } }, eb)
+  let done = false
+  const ok = (t) => { if (done) { return } done = true; cb(t) }
+  const fail = () => { if (done) { return } done = true; if (eb) { eb() } }
+  this.httpGet(url, (u8) => {
+    let t = null
+    try { t = new TextDecoder('utf-8').decode(u8) } catch (e) { fail(); return }
+    ok(t)
+  }, fail)
 }
 
 Background.prototype.fetchJSON = function (url, cb, eb) {
-  this.fetchText(url, (t) => { try { cb(JSON.parse(t)) } catch (e) { eb() } }, eb)
+  let done = false
+  const ok = (j) => { if (done) { return } done = true; cb(j) }
+  const fail = () => { if (done) { return } done = true; if (eb) { eb() } }
+  this.fetchText(url, (t) => {
+    let j = null
+    try { j = JSON.parse(t) } catch (e) { fail(); return }
+    ok(j)
+  }, fail)
 }
 
 // ============================================================================
@@ -267,16 +292,31 @@ Background.prototype.tryNextGifSource = function (target) {
 }
 
 // Giphy: usa fixed_height_small (GIF ~200px, leggere) → decodifica nativa del browser.
+// La chiave gratuita è RATE-LIMITED (429): quando succede mettiamo Giphy in
+// pausa per qualche minuto invece di sprecare una richiesta (e un giro di
+// fallback) ad ogni stormo nuovo.
 Background.prototype.fetchGiphy = function (q, target) {
   if (!this.giphyKey) { this.tryNextGifSource(target); return }
+  if (this._giphyBlockedUntil && Date.now() < this._giphyBlockedUntil) {
+    this.tryNextGifSource(target); return
+  }
   const url = 'https://api.giphy.com/v1/gifs/search?api_key=' + this.giphyKey + '&q=' + encodeURIComponent(q) + '&limit=25&rating=r'
-  this.fetchJSON(url, (json) => {
-    const gifs = json.data
-    if (!gifs || !gifs.length) { this.tryNextGifSource(target); return }
-    const g = gifs[Math.floor(Math.random() * gifs.length)]
-    const src = (g.images && (g.images.fixed_height_small || g.images.fixed_width_small || g.images.downsized_small) || {}).url
-    if (src) { this.setSwarmData(src, target) } else { this.tryNextGifSource(target) }
-  }, () => { this.tryNextGifSource(target) })
+  const ctl = Net.begin('giphy')
+  Net.fetch(url, { signal: ctl.signal }, 5000).then((res) => {
+    if (res.status === 429) {
+      this._giphyBlockedUntil = Date.now() + 180000   // 3 minuti
+      console.warn('[Background] Giphy 429 (rate limit): pausa di 3 minuti, uso Commons')
+      this.tryNextGifSource(target); return
+    }
+    if (!res.ok) { this.tryNextGifSource(target); return }
+    return res.json().then((json) => {
+      const gifs = json && json.data
+      if (!gifs || !gifs.length) { this.tryNextGifSource(target); return }
+      const g = gifs[Math.floor(Math.random() * gifs.length)]
+      const src = (g.images && (g.images.fixed_height_small || g.images.fixed_width_small || g.images.downsized_small) || {}).url
+      if (src) { this.setSwarmData(src, target) } else { this.tryNextGifSource(target) }
+    })
+  }).catch(() => { this.tryNextGifSource(target) })
 }
 
 // Fonte GIF affidabile: Wikimedia Commons (API pubblica, no key, CORS aperto).
@@ -357,14 +397,33 @@ Background.prototype.setSwarmData = function (src, target) {
   img.src = src
 }
 
+// Quanti boid in TOTALE fra tutti gli stormi. Ogni stormo ne prende una parte:
+// lo stormo si espande (più boid, sparsi più larghi) ma il costo di disegno
+// resta limitato — ogni boid è una drawImage della GIF.
+Background.prototype.boidsFor = function () {
+  const n = (this.swarms || []).length
+  const per = this.swarmBoids || 30
+  const total = this.maxTotalBoids || 110
+  return n > 1 ? Math.max(12, Math.min(per, Math.floor(total / n))) : per
+}
+
 // Costruisce i boid di uno stormo nella sua zona dello schermo.
+// L'area di spawn è proporzionale allo schermo (prima era fissa 350x250 px,
+// quindi su schermi grandi lo stormo restava un grumo stretto).
 Background.prototype._makeBoids = function (count) {
   const W = this.client.el.width; const H = this.client.el.height
   const boids = []
   const slot = (this.client && this.client.nextSlot) ? this.client.nextSlot() : { x: 0.35 + Math.random() * 0.3, y: 0.35 + Math.random() * 0.3 }
   const cx = W * slot.x; const cy = H * slot.y
+  const spreadX = Math.max(460, W * 0.62)
+  const spreadY = Math.max(340, H * 0.52)
   for (let i = 0; i < count; i++) {
-    boids.push({ x: cx + (Math.random() - 0.5) * 350, y: cy + (Math.random() - 0.5) * 250, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 })
+    boids.push({
+      x: cx + (Math.random() - 0.5) * spreadX,
+      y: cy + (Math.random() - 0.5) * spreadY,
+      vx: (Math.random() - 0.5) * 5,
+      vy: (Math.random() - 0.5) * 5
+    })
   }
   return boids
 }
@@ -373,7 +432,7 @@ Background.prototype.initSwarm = function (target) {
   target = target || (this.swarms && this.swarms[this.swarms.length - 1])
   if (!target || target.ready) { return }
   target.img = target.host
-  target.boids = this._makeBoids(17)
+  target.boids = this._makeBoids(this.boidsFor())
   target.start = performance.now()
   target.nextTeleport = Date.now() + 6000 + Math.random() * 8000
   target.ready = true
@@ -387,7 +446,7 @@ Background.prototype.initSwarmFrames = function (g, target) {
   target.frames = g.frames
   target.width = g.width
   target.height = g.height
-  target.boids = this._makeBoids(17)
+  target.boids = this._makeBoids(this.boidsFor())
   target.start = performance.now()
   target.nextTeleport = Date.now() + 6000 + Math.random() * 8000
   target.ready = true
@@ -416,23 +475,31 @@ Background.prototype.stepSwarm = function (s, W, H, bass) {
   if (!s || !s.boids || !s.boids.length) { return }
   const now = Date.now()
   if (now > s.nextTeleport) {
-    const dx = (Math.random() - 0.5) * W * 0.8; const dy = (Math.random() - 0.5) * H * 0.6
-    for (let i = 0; i < s.boids.length; i++) { s.boids[i].x += dx; s.boids[i].y += dy }
+    // Il salto non è più rigido: una traslazione comune PIÙ un jitter per-boid,
+    // così lo stormo non solo si sposta ma si RI-SPARPAGLIA su un'area più ampia.
+    const dx = (Math.random() - 0.5) * W * 0.9; const dy = (Math.random() - 0.5) * H * 0.7
+    for (let i = 0; i < s.boids.length; i++) {
+      const b = s.boids[i]
+      b.x += dx + (Math.random() - 0.5) * 300
+      b.y += dy + (Math.random() - 0.5) * 220
+    }
     s.nextTeleport = now + 6000 + Math.random() * 9000
   }
-  const R = 170
+  const R = 210
   for (let i = 0; i < s.boids.length; i++) {
     const b = s.boids[i]
     let sx = 0, sy = 0, ax = 0, ay = 0, cx = 0, cy = 0, n = 0
     for (let j = 0; j < s.boids.length; j++) {
       if (j === i) { continue }
       const o = s.boids[j]; const dx = o.x - b.x; const dy = o.y - b.y; const d = Math.sqrt(dx * dx + dy * dy)
-      if (d < R) { n++; if (d < 90 && d > 0) { sx -= (dx / d) * (1 - d / 90); sy -= (dy / d) * (1 - d / 90) } ax += o.vx; ay += o.vy; cx += o.x; cy += o.y }
+      if (d < R) { n++; if (d < 130 && d > 0) { sx -= (dx / d) * (1 - d / 130); sy -= (dy / d) * (1 - d / 130) } ax += o.vx; ay += o.vy; cx += o.x; cy += o.y }
     }
-    if (n) { b.vx += sx * 0.22 + (ax / n - b.vx) * 0.02 + (cx / n - b.x) * 0.0008; b.vy += sy * 0.22 + (ay / n - b.vy) * 0.02 + (cy / n - b.y) * 0.0008 }
+    // coesione ridotta (0.0008 -> 0.00035) e separazione più forte: il gruppo
+    // resta coeso ma si distende su un'area molto più larga.
+    if (n) { b.vx += sx * 0.28 + (ax / n - b.vx) * 0.02 + (cx / n - b.x) * 0.00035; b.vy += sy * 0.28 + (ay / n - b.vy) * 0.02 + (cy / n - b.y) * 0.00035 }
     b.vx += (Math.random() - 0.5) * 0.12; b.vy += (Math.random() - 0.5) * 0.12
-    if (b.x < 60) { b.vx += 0.2 } if (b.x > W - 60) { b.vx -= 0.2 }
-    if (b.y < 60) { b.vy += 0.2 } if (b.y > H - 120) { b.vy -= 0.2 }
+    if (b.x < 30) { b.vx += 0.22 } if (b.x > W - 30) { b.vx -= 0.22 }
+    if (b.y < 30) { b.vy += 0.22 } if (b.y > H - 70) { b.vy -= 0.22 }
     const sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy) || 0.001
     const speedBoost = 1 + (this.swarmSpeedBoost || 0) * 3
     const max = (4.5 + bass * 4) * speedBoost; const min = 1.8
@@ -447,8 +514,8 @@ Background.prototype.drawSwarm = function (ctx, W, H) {
   const swarms = this.swarms || []
   if (!swarms.length) { return }
   const bass = this.client.audioReactor ? (this.client.audioReactor.bass || 0) : 0
-  // Con più stormi in scena le GIF sono più piccole, così non si accavallano
-  const crowd = swarms.length > 1 ? Math.max(0.55, 1 - (swarms.length - 1) * 0.12) : 1
+  // Le GIF mantengono la LORO dimensione (gifScale) anche con più stormi: è lo
+  // stormo a espandersi, non l'immagine a rimpicciolirsi.
   ctx.save()
   ctx.globalAlpha = 0.9
   for (let k = 0; k < swarms.length; k++) {
@@ -466,7 +533,7 @@ Background.prototype.drawSwarm = function (ctx, W, H) {
       img = s.img; nw = img.naturalWidth; nh = img.naturalHeight
     }
     if (!img || !nw || !nh) { continue }
-    const th = 90 * (this.gifScale || 1.0) * crowd
+    const th = 90 * (this.gifScale || 1.0)
     const sc = th / nh; const dw = nw * sc
     for (let i = 0; i < s.boids.length; i++) {
       const b = s.boids[i]

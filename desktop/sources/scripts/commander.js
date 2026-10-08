@@ -230,7 +230,15 @@ function Commander (client) {
     swarms: () => {
       const sw = client.background.swarms || []
       console.log('Commander', '=== STORMI GIF (' + sw.length + '/' + (client.background.maxSwarms || 4) + ') ===')
-      sw.forEach((s, i) => console.log('Commander', `  [${i}] tag:${s.tag || '?'} ${s.ready ? 'pronto' : 'caricamento...'} boid:${s.boids ? s.boids.length : 0}`))
+      sw.forEach((s, i) => {
+        let span = ''
+        if (s.boids && s.boids.length) {
+          let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9
+          for (const b of s.boids) { if (b.x < minX) minX = b.x; if (b.x > maxX) maxX = b.x; if (b.y < minY) minY = b.y; if (b.y > maxY) maxY = b.y }
+          span = ` estensione ${Math.round(maxX - minX)}x${Math.round(maxY - minY)}px`
+        }
+        console.log('Commander', `  [${i}] tag:${s.tag || '?'} ${s.ready ? 'pronto' : 'caricamento...'} boid:${s.boids ? s.boids.length : 0}${span}`)
+      })
       const md = (client.model3d && client.model3d.models) || []
       console.log('Commander', '=== MODELLI 3D (' + md.length + '/' + (client.model3d ? client.model3d.maxModels : '?') + ') ===')
       md.forEach((e, i) => console.log('Commander', `  [${i}] ${(e.obj && e.obj.name) || 'model'}`))
@@ -245,6 +253,13 @@ function Commander (client) {
       if (isNaN(n)) { console.log('Commander', 'swarmmax:<n>  (attuale ' + (client.background.maxSwarms || 4) + ')'); return }
       client.background.maxSwarms = Math.max(1, Math.min(8, n))
       console.log('Commander', 'stormi massimi:', client.background.maxSwarms)
+    },
+    // swarmboids:<n> → boid per stormo (lo stormo si allarga)
+    swarmboids: (p) => {
+      const n = parseInt(p.str)
+      if (isNaN(n)) { console.log('Commander', 'swarmboids:<n>  (attuale ' + (client.background.swarmBoids || 30) + ')'); return }
+      client.background.swarmBoids = Math.max(6, Math.min(60, n))
+      console.log('Commander', 'boid per stormo:', client.background.swarmBoids)
     },
     // models:<n> → quanti modelli 3D tenere in scena (1-16)
     models: (p) => {

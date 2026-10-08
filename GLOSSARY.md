@@ -187,6 +187,7 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | `swarms` | stato di stormi GIF e modelli 3D in scena |
 | `swarmclear` | azzera tutti gli stormi |
 | `swarmmax:<n>` | stormi massimi (1–8, default 4) |
+| `swarmboids:<n>` | boid per stormo (6–60, default 30) |
 | `models:<n>` | modelli 3D massimi (1–16, default 10) |
 | `text:HELLO` | big text immediato |
 | `ph:<query>` | **Poly Haven** (CC0, senza token): cerca e carica un modello |
@@ -217,7 +218,11 @@ Da scegliere `in vec2 v_uv;` e scrivere `FragColor`.
 | **`client.nextTagFor(kind)`** | avanza e restituisce il tag del canale; se il canale è pinnato restituisce il pin senza avanzare |
 | **`client.resetTagRotation()`** | azzera i cursori: chiamato da `Cmd+Shift+T` e da `Cmd+W` |
 | **stormo multiplo** | `background.swarms` è un array (max `maxSwarms`, default 4). Ogni stormo ha la sua GIF, il suo `<img>` nascosto, i suoi boid e la sua zona (slot) |
-| **`crowd`** | con più stormi in scena le GIF rimpiccioliscono (`max(0.55, 1-(n-1)*0.12)`) per non accavallarsi |
+| **dimensione GIF** | **costante**: `gifScale` non dipende dal numero di stormi. È lo stormo a espandersi, non l'immagine a rimpicciolirsi |
+| **`swarmBoids` / `maxTotalBoids`** | 30 boid per stormo, 110 in totale fra tutti gli stormi (ogni boid è una `drawImage`) |
+| **espansione** | spawn `max(460, W×0.62)` × `max(340, H×0.52)`, coesione ridotta a 0.00035, separazione fino a 130px, teleport con jitter per-boid |
+| **callback idempotenti** | `httpGet`/`fetchText`/`fetchJSON` chiamano `cb`/`eb` **una sola volta**: senza, un fallimento avanzava la catena di due passi saltando la ricerca per tag |
+| **backoff Giphy 429** | la chiave gratuita è rate-limited: sui 429 Giphy va in pausa 3 minuti |
 | **`_dropSwarm(i)`** | rimuove uno stormo e libera il suo `<img>`; oltre il massimo esce sempre il più vecchio |
 | **modelli 3D** | fino a 10 in scena (`maxModels`), regolabile con `models:<n>` |
 
